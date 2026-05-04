@@ -105,25 +105,42 @@ def fetch_videos() -> list[dict]:
     headers = {"User-Agent": "Mozilla/5.0"}
     
     for user in usernames:
-        log(f"Fetching videos for @{user}...", "STEP")
-        cursor = 0
-        # Fetch 1 page per user (20 videos) to keep it fast
+        # Clean username (remove @ if user added it in secrets)
+        clean_user = user.replace("@", "").strip()
+        log(f"Fetching videos for @{clean_user}...", "STEP")
+        
         try:
-            params = {"unique_id": f"@{user}", "count": 20, "cursor": cursor, "web": 1, "hd": 1}
-            resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=20)
-            data = resp.json()
+            params = {"unique_id": clean_user, "count": 20, "cursor": 0, "web": 1, "hd": 1}
+            # Headers added to look more like a browser
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                "Referer": "https://www.tikwm.com/"
+            }
+            resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+            
+            if not resp.text:
+                log(f"Empty response from API for @{clean_user}", "WARN")
+                continue
+                
+            try:
+                data = resp.json()
+            except Exception:
+                log(f"Invalid JSON received for @{clean_user}. Response starts with: {resp.text[:100]}", "ERR")
+                continue
             
             if data.get("code") == 0:
                 posts = data.get("data", {}).get("videos", [])
+                if not posts:
+                    log(f"No videos found for @{clean_user} (Profile may be private or empty).", "WARN")
                 for p in posts:
-                    p["_source_user"] = user # Tracking source
+                    p["_source_user"] = clean_user
                 all_videos.extend(posts)
             else:
-                log(f"API Error for @{user}: {data.get('msg')}", "WARN")
+                log(f"API Error for @{clean_user}: {data.get('msg', 'Unknown Error')}", "WARN")
             
-            time.sleep(1) # Gap between users
+            time.sleep(2) # Increased delay to avoid rate limiting
         except Exception as e:
-            log(f"Fetch error for @{user}: {e}", "ERR")
+            log(f"Fetch error for @{clean_user}: {e}", "ERR")
             
     log(f"Total {len(all_videos)} videos pooled from {len(usernames)} users.")
     return all_videos

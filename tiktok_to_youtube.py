@@ -221,12 +221,15 @@ def upload_to_youtube(video_path: Path, title: str, description: str):
             
     youtube = build("youtube", "v3", credentials=creds)
     
+    # Dynamic Tags for better SEO
+    viral_tags = ["Shorts", "Viral", "Trending", "Hindi", "India", "Fact", "Entertainment", "Comedy", "Gadgets", "Amazing"]
+    
     body = {
         "snippet": {
             "title": title[:100],
             "description": description,
             "categoryId": CATEGORY,
-            "tags": ["Shorts", "Viral", "Trending"]
+            "tags": viral_tags
         },
         "status": {
             "privacyStatus": PRIVACY,
@@ -279,21 +282,34 @@ def main():
         log("Everything is up to date. No new videos.", "INFO")
         return
 
-    vid_id = str(target.get("video_id", target.get("id")))
-    raw_caption = target.get("title", "") or "New Short"
+    # --- Smart Caption Rewrite & SEO ---
+    import random
+    hooks = [
+        "Wait for it! 😱", "Must Watch! 🔥", "Ending will shock you! 🤯",
+        "Watch till end! ✨", "This is unbelievable! 🚀", "Did you know this? 🤔",
+        "Best video today! 🌟", "Omg! Look at this 💎"
+    ]
     
-    # --- YouTube Usable Caption Cleaning ---
-    # 1. Remove TikTok specific hashtags
-    cleaned_caption = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
-    # 2. Remove extra spaces
-    cleaned_caption = re.sub(r'\s+', ' ', cleaned_caption).strip()
+    # 1. Clean original caption
+    clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
+    clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
     
-    # Title (Max 100 chars, no < >)
-    clean_title = re.sub(r'[<>]', '', cleaned_caption).strip()
-    if not clean_title: clean_title = f"Shorts - {vid_id}"
+    # 2. Rewrite Title
+    hook = random.choice(hooks)
+    # Combine Hook + Clean Caption
+    clean_title = f"{hook} {clean_orig}"
+    clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
     
-    # Description
-    final_description = f"{cleaned_caption}\n\n#Shorts"
+    if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
+    
+    # 3. Dynamic Description
+    final_description = (
+        f"{clean_title}\n\n"
+        f"Aapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
+        f"✅ Subscribe for more viral shorts!\n"
+        f"🔥 Daily amazing content from across the web.\n\n"
+        f"#Shorts #Viral #India #Trending #Amazing #Fact #Hindi"
+    )
     
     # Download
     v_file = download_video(target)

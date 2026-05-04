@@ -176,11 +176,18 @@ def process_video(input_path: Path) -> Path | None:
     log("Processing video (Scaling to 1080x1920)...", "STEP")
     
     # FFmpeg filter: Scale, Pad, and Add Watermark (@VIRALITY)
+    # Using a common Linux font path for GitHub Actions compatibility
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    drawtext = f"drawtext=text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+    
+    # Add fontfile if it exists (mostly for local Windows testing, but good for safety)
+    if os.path.exists(font_path):
+        drawtext = f"drawtext=fontfile='{font_path}':text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+
     vf = (
-        "scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
-        "drawtext=text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:"
-        "shadowcolor=black:shadowx=2:shadowy=2"
+        f"scale=1080:1920:force_original_aspect_ratio=decrease,"
+        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
+        f"{drawtext}"
     )
     
     cmd = (

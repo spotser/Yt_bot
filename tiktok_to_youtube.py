@@ -28,7 +28,7 @@ CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")
 TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
 PRIVACY          = os.environ.get("YT_PRIVACY", "public")
-CATEGORY         = os.environ.get("YT_CATEGORY", "22") # 22 = People & Blogs
+CATEGORY         = os.environ.get("YT_CATEGORY", "24") # 24 = Entertainment, 23 = Comedy
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -189,25 +189,31 @@ def download_video(v: dict) -> Path | None:
         log(f"Download failed: {e}", "ERR")
         return None
 
-def process_video(input_path: Path) -> Path | None:
+def process_video(input_path: Path, hook_text: str) -> Path | None:
     """Smart Scaling: Keeps aspect ratio, adds black bars if needed to make it 1080x1920"""
     output_path = PROCESSED_DIR / input_path.name
-    log("Processing video (Scaling to 1080x1920)...", "STEP")
+    log("Processing video (Scaling, Mirroring, Thumbnail Hook, Watermark)...", "STEP")
     
-    # FFmpeg filter: Scale, Pad, and Add Watermark (@VIRALITY)
+    # FFmpeg filters setup
     # Using a common Linux font path for GitHub Actions compatibility
     font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    drawtext = f"drawtext=text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+    font_opt = f"fontfile='{font_path}':" if os.path.exists(font_path) else ""
     
-    # Add fontfile if it exists (mostly for local Windows testing, but good for safety)
-    if os.path.exists(font_path):
-        drawtext = f"drawtext=fontfile='{font_path}':text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+    # Safe text for FFmpeg (remove emojis/special chars that cause boxes)
+    safe_text = hook_text.encode('ascii', 'ignore').decode('ascii').strip().replace("'", "").replace(":", "")
+    
+    # 1. Thumbnail Hook: Big yellow text in the middle, visible only for first 0.8 seconds
+    thumb_hook = f"drawtext={font_opt}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-text_w)/2:y=(h-text_h)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
+    
+    # 2. Watermark: Bottom right corner
+    watermark = f"drawtext={font_opt}text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
 
     vf = (
         f"hflip," # Mirror effect to bypass copyright detection
         f"scale=1080:1920:force_original_aspect_ratio=decrease,"
         f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
-        f"{drawtext}"
+        f"{thumb_hook},"
+        f"{watermark}"
     )
     
     cmd = (
@@ -355,7 +361,7 @@ def main():
     if not v_file: return
     
     # Process
-    p_file = process_video(v_file)
+    p_file = process_video(v_file, hook)
     if not p_file: return
     
     # Upload

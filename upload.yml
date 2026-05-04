@@ -36,7 +36,7 @@ jobs:
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
           YT_PRIVACY:          public
-          YT_CATEGORY:         "22"
+          YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"
         run: python tiktok_to_youtube.py
 

@@ -30,7 +30,7 @@ UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
 PRIVACY          = os.environ.get("YT_PRIVACY", "public")
 CATEGORY         = os.environ.get("YT_CATEGORY", "22") # 22 = People & Blogs
 
-TIKWM_API        = "https://www.tikwm.com/api"
+TIKWM_API        = "https://api.tikwm.com/api"
 
 # PATHS
 BASE_DIR      = Path("temp_work")
@@ -111,10 +111,19 @@ def fetch_videos() -> list[dict]:
         
         try:
             params = {"unique_id": clean_user, "count": 20, "cursor": 0, "web": 1, "hd": 1}
-            # Headers added to look more like a browser
+            # Enhanced Headers to bypass Cloudflare fingerprinting
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-                "Referer": "https://www.tikwm.com/"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://www.tikwm.com",
+                "Referer": "https://www.tikwm.com/",
+                "Sec-Ch-Ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site"
             }
             resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
             

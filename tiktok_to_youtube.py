@@ -23,7 +23,7 @@ from datetime import datetime
 # CONFIGURATION
 # ==========================================
 
-SEARCH_KEYWORDS   = os.environ.get("SEARCH_KEYWORDS", "India viral, Hindi funny")
+SEARCH_KEYWORDS   = os.environ.get("SEARCH_KEYWORDS", "funny viral, comedy clips, desi comedy, hilarious fails, trending comedy")
 CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")
 TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
@@ -145,6 +145,14 @@ def fetch_videos() -> list[dict]:
                     # Check if any skip word is in author name or id
                     if any(word in author_name or word in author_id for word in SKIP_WORDS):
                         continue
+                        
+                    # Time Filter: Skip videos older than 7 days
+                    create_time = p.get("create_time", 0)
+                    if create_time:
+                        days_old = (time.time() - create_time) / (24 * 3600)
+                        if days_old > 7:
+                            continue
+                            
                     filtered.append(p)
                 
                 log(f"Found {len(posts)} videos for '{kw}' (Kept {len(filtered)} after News filtering).")
@@ -304,9 +312,9 @@ def main():
     # --- Smart Caption Rewrite & SEO ---
     import random
     hooks = [
-        "Wait for it! 😱", "Must Watch! 🔥", "Ending will shock you! 🤯",
-        "Watch till end! ✨", "This is unbelievable! 🚀", "Did you know this? 🤔",
-        "Best video today! 🌟", "Omg! Look at this 💎"
+        "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
+        "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
+        "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
     ]
     
     # 1. Clean original caption
@@ -320,22 +328,22 @@ def main():
     
     if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
     
-    # 3. Dynamic Description & Tags Variations
+    # 3. Dynamic Description & Tags Variations (Comedy Focused)
     desc_templates = [
         (
             f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
-            f"✅ Subscribe for more viral shorts!\n🔥 Daily amazing content.\n\n",
-            ["Shorts", "Viral", "Trending", "Hindi", "India", "Fact", "Entertainment"]
+            f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
+            ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
         ),
         (
-            f"🔥 {clean_title}\n\nDon't forget to like and share if you enjoyed this! ❤️\n"
-            f"🔔 Hit the subscribe button for daily updates!\n\n",
-            ["Shorts", "India", "ViralVideo", "TrendingShorts", "Amazing", "Gadgets", "Daily"]
+            f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
+            f"🔔 Hit the subscribe button for daily funny videos!\n\n",
+            ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
         ),
         (
-            f"✨ {clean_title}\n\nWhat do you think about this? Let us know! 🗣️\n"
-            f"👉 Subscribe to our channel for the best viral content!\n\n",
-            ["Shorts", "Trending", "MustWatch", "HindiFacts", "Desi", "ViralIndia", "Wow"]
+            f"✨ {clean_title}\n\nTag a friend who needs to see this! 🗣️👇\n"
+            f"👉 Subscribe to our channel for the best comedy content!\n\n",
+            ["Shorts", "Trending", "MustWatch", "FunnyClips", "DesiComedy", "Prank", "Haha"]
         )
     ]
     

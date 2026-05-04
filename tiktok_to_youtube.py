@@ -185,6 +185,7 @@ def process_video(input_path: Path) -> Path | None:
         drawtext = f"drawtext=fontfile='{font_path}':text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
 
     vf = (
+        f"hflip," # Mirror effect to bypass copyright detection
         f"scale=1080:1920:force_original_aspect_ratio=decrease,"
         f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
         f"{drawtext}"

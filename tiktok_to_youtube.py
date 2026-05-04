@@ -110,12 +110,18 @@ def fetch_videos() -> list[dict]:
         "Accept-Language": "en-US,en;q=0.9"
     }
 
-    # News & Personal Content (Face/Voiceover) to skip
+    # Comprehensive Filter List to ensure maximum copyright safety and faceless content
     SKIP_WORDS = [
-        # News
-        "news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc",
-        # Personal/Vlog/Talking Head
-        "vlog", "storytime", "podcast", "interview", "grwm", "my voice", "day in my life", "get ready with me", "daily vlog"
+        # News Channels & Brands
+        "news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc", "cnn", "fox", "timesnow", "tv9", "news18", "thehindu",
+        # Personal/Vlog/Talking Head (Face/Voice)
+        "vlog", "storytime", "podcast", "interview", "grwm", "my voice", "day in my life", "get ready with me", "daily vlog", "my morning", "my night", "my story", "qna", "q&a",
+        # Movies/TV Shows/Web Series (High Copyright Risk)
+        "movie", "cinema", "netflix", "prime", "episode", "season", "trailer", "teaser", "actor", "actress", "bollywood", "hollywood", "tollywood", "scene", "series", "webseries", "director",
+        # Music/Songs/Labels (High Copyright Risk)
+        "official video", "music video", "song", "tseries", "vevo", "singer", "album", "lyrics", "cover", "remix", "lofi", "dj ", "mtv",
+        # Sports/Events (High Copyright Risk)
+        "ipl", "bcci", "icc", "wwe", "football", "cricket", "nba", "fifa", "ufc", "wrestling", "match", "highlights", "sports", "premier league", "champions"
     ]
 
     for kw in keywords:

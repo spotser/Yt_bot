@@ -100,34 +100,32 @@ def save_history(tiktok_id: str, yt_id: str, title: str):
 # ==========================================
 
 def fetch_videos() -> list[dict]:
-    log(f"Fetching videos for @{TIKTOK_USERNAME}...", "STEP")
-    headers = {"User-Agent": "Mozilla/5.0"}
+    usernames = [u.strip() for u in TIKTOK_USERNAME.split(",") if u.strip()]
     all_videos = []
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    # Try fetching up to 2 pages
-    cursor = 0
-    for i in range(2):
+    for user in usernames:
+        log(f"Fetching videos for @{user}...", "STEP")
+        cursor = 0
+        # Fetch 1 page per user (20 videos) to keep it fast
         try:
-            params = {"unique_id": f"@{TIKTOK_USERNAME}", "count": 20, "cursor": cursor, "web": 1, "hd": 1}
+            params = {"unique_id": f"@{user}", "count": 20, "cursor": cursor, "web": 1, "hd": 1}
             resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=20)
             data = resp.json()
             
-            if data.get("code") != 0:
-                log(f"API Error: {data.get('msg')}", "ERR")
-                break
-                
-            posts = data.get("data", {}).get("videos", [])
-            if not posts: break
+            if data.get("code") == 0:
+                posts = data.get("data", {}).get("videos", [])
+                for p in posts:
+                    p["_source_user"] = user # Tracking source
+                all_videos.extend(posts)
+            else:
+                log(f"API Error for @{user}: {data.get('msg')}", "WARN")
             
-            all_videos.extend(posts)
-            cursor = data.get("data", {}).get("cursor", 0)
-            if not data.get("data", {}).get("hasMore"): break
-            time.sleep(1)
+            time.sleep(1) # Gap between users
         except Exception as e:
-            log(f"Fetch error: {e}", "ERR")
-            break
+            log(f"Fetch error for @{user}: {e}", "ERR")
             
-    log(f"Found {len(all_videos)} videos.")
+    log(f"Total {len(all_videos)} videos pooled from {len(usernames)} users.")
     return all_videos
 
 def download_video(v: dict) -> Path | None:

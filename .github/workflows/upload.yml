@@ -1,0 +1,54 @@
+name: TikTok → YouTube Shorts
+
+on:
+  schedule:
+    - cron: "30 10 * * *"   # 4:00 PM IST
+    - cron: "30 13 * * *"   # 7:00 PM IST
+    - cron: "0  16 * * *"   # 9:30 PM IST
+  workflow_dispatch:         # Manual run button
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests google-auth google-auth-oauthlib google-api-python-client
+
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Restore upload history
+        uses: actions/cache@v4
+        with:
+          path: upload_history.txt
+          key: upload-history-${{ github.run_id }}
+          restore-keys: |
+            upload-history-
+
+      - name: Run uploader
+        env:
+          TIKTOK_USERNAME:     ${{ secrets.TIKTOK_USERNAME }}
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
+          TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
+          YT_PRIVACY:          public
+          YT_CATEGORY:         "22"
+          UPLOAD_OLDEST:       "false"
+        run: python tiktok_to_youtube.py
+
+      - name: Save upload history
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: upload_history.txt
+          key: upload-history-${{ github.run_id }}

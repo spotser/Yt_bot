@@ -32,7 +32,7 @@ jobs:
 
       - name: Run uploader
         env:
-          TIKTOK_USERNAME:     ${{ secrets.TIKTOK_USERNAME }}
+          SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS }}
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
           YT_PRIVACY:          public

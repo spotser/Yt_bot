@@ -23,14 +23,14 @@ from datetime import datetime
 # CONFIGURATION
 # ==========================================
 
-TIKTOK_USERNAME  = os.environ.get("TIKTOK_USERNAME", "")
+SEARCH_KEYWORDS   = os.environ.get("SEARCH_KEYWORDS", "India viral, Hindi funny")
 CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")
 TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
 PRIVACY          = os.environ.get("YT_PRIVACY", "public")
 CATEGORY         = os.environ.get("YT_CATEGORY", "22") # 22 = People & Blogs
 
-TIKWM_API        = "https://api.tikwm.com/api"
+TIKWM_API        = "https://www.tikwm.com/api"
 
 # PATHS
 BASE_DIR      = Path("temp_work")
@@ -60,8 +60,8 @@ def setup_dirs():
         d.mkdir(parents=True, exist_ok=True)
 
 def validate_env():
-    if not TIKTOK_USERNAME or not CLIENT_SECRETS or not TOKEN_PICKLE_B64:
-        log("Missing required Environment Secrets (TIKTOK_USERNAME, CLIENT_SECRETS_JSON, TOKEN_PICKLE_B64)", "ERR")
+    if not SEARCH_KEYWORDS or not CLIENT_SECRETS or not TOKEN_PICKLE_B64:
+        log("Missing required Environment Secrets (SEARCH_KEYWORDS, CLIENT_SECRETS_JSON, TOKEN_PICKLE_B64)", "ERR")
         sys.exit(1)
 
 def write_secrets():
@@ -100,58 +100,40 @@ def save_history(tiktok_id: str, yt_id: str, title: str):
 # ==========================================
 
 def fetch_videos() -> list[dict]:
-    usernames = [u.strip() for u in TIKTOK_USERNAME.split(",") if u.strip()]
+    keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
     all_videos = []
-    headers = {"User-Agent": "Mozilla/5.0"}
     
-    for user in usernames:
-        # Clean username (remove @ if user added it in secrets)
-        clean_user = user.replace("@", "").strip()
-        log(f"Fetching videos for @{clean_user}...", "STEP")
-        
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.tikwm.com/",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+
+    for kw in keywords:
+        log(f"Searching for viral videos: '{kw}'...", "STEP")
         try:
-            params = {"unique_id": clean_user, "count": 20, "cursor": 0, "web": 1, "hd": 1}
-            # Enhanced Headers to bypass Cloudflare fingerprinting
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Origin": "https://www.tikwm.com",
-                "Referer": "https://www.tikwm.com/",
-                "Sec-Ch-Ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"Windows"',
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site"
-            }
-            resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+            params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
+            # Try searching using the feed/search endpoint
+            resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
             
-            if not resp.text:
-                log(f"Empty response from API for @{clean_user}", "WARN")
+            if "Just a moment" in resp.text or resp.status_code == 403:
+                log(f"Cloudflare block detected for keyword '{kw}'. Trying backup method...", "WARN")
                 continue
-                
-            try:
-                data = resp.json()
-            except Exception:
-                log(f"Invalid JSON received for @{clean_user}. Response starts with: {resp.text[:100]}", "ERR")
-                continue
-            
+
+            data = resp.json()
             if data.get("code") == 0:
                 posts = data.get("data", {}).get("videos", [])
-                if not posts:
-                    log(f"No videos found for @{clean_user} (Profile may be private or empty).", "WARN")
-                for p in posts:
-                    p["_source_user"] = clean_user
+                log(f"Found {len(posts)} videos for '{kw}'.")
                 all_videos.extend(posts)
             else:
-                log(f"API Error for @{clean_user}: {data.get('msg', 'Unknown Error')}", "WARN")
-            
-            time.sleep(2) # Increased delay to avoid rate limiting
+                log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
+                
+            time.sleep(2)
         except Exception as e:
-            log(f"Fetch error for @{clean_user}: {e}", "ERR")
+            log(f"Search error for '{kw}': {e}", "ERR")
             
-    log(f"Total {len(all_videos)} videos pooled from {len(usernames)} users.")
+    log(f"Total {len(all_videos)} videos pooled from all keywords.")
     return all_videos
 
 def download_video(v: dict) -> Path | None:

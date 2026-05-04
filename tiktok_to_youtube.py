@@ -110,8 +110,13 @@ def fetch_videos() -> list[dict]:
         "Accept-Language": "en-US,en;q=0.9"
     }
 
-    # News channels to skip
-    SKIP_WORDS = ["news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc"]
+    # News & Personal Content (Face/Voiceover) to skip
+    SKIP_WORDS = [
+        # News
+        "news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc",
+        # Personal/Vlog/Talking Head
+        "vlog", "storytime", "podcast", "interview", "grwm", "my voice", "day in my life", "get ready with me", "daily vlog"
+    ]
 
     for kw in keywords:
         log(f"Searching for viral videos: '{kw}'...", "STEP")
@@ -206,7 +211,7 @@ def process_video(input_path: Path) -> Path | None:
         log(f"FFmpeg failed: {e}", "ERR")
         return None
 
-def upload_to_youtube(video_path: Path, title: str, description: str):
+def upload_to_youtube(video_path: Path, title: str, description: str, tags: list):
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
     from google.auth.transport.requests import Request
@@ -222,15 +227,12 @@ def upload_to_youtube(video_path: Path, title: str, description: str):
             
     youtube = build("youtube", "v3", credentials=creds)
     
-    # Dynamic Tags for better SEO
-    viral_tags = ["Shorts", "Viral", "Trending", "Hindi", "India", "Fact", "Entertainment", "Comedy", "Gadgets", "Amazing"]
-    
     body = {
         "snippet": {
             "title": title[:100],
             "description": description,
             "categoryId": CATEGORY,
-            "tags": viral_tags
+            "tags": tags
         },
         "status": {
             "privacyStatus": PRIVACY,
@@ -257,6 +259,13 @@ def upload_to_youtube(video_path: Path, title: str, description: str):
 # ==========================================
 
 def main():
+    # Human-like randomness: Wait between 10 seconds to 5 minutes before starting
+    # This ensures GitHub Actions don't hit the API at the exact same minute every day
+    import random
+    delay = random.randint(10, 300)
+    log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
+    time.sleep(delay)
+
     validate_env()
     setup_dirs()
     write_secrets()
@@ -300,20 +309,32 @@ def main():
     
     # 2. Rewrite Title
     hook = random.choice(hooks)
-    # Combine Hook + Clean Caption
     clean_title = f"{hook} {clean_orig}"
     clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
     
     if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
     
-    # 3. Dynamic Description
-    final_description = (
-        f"{clean_title}\n\n"
-        f"Aapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
-        f"✅ Subscribe for more viral shorts!\n"
-        f"🔥 Daily amazing content from across the web.\n\n"
-        f"#Shorts #Viral #India #Trending #Amazing #Fact #Hindi"
-    )
+    # 3. Dynamic Description & Tags Variations
+    desc_templates = [
+        (
+            f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
+            f"✅ Subscribe for more viral shorts!\n🔥 Daily amazing content.\n\n",
+            ["Shorts", "Viral", "Trending", "Hindi", "India", "Fact", "Entertainment"]
+        ),
+        (
+            f"🔥 {clean_title}\n\nDon't forget to like and share if you enjoyed this! ❤️\n"
+            f"🔔 Hit the subscribe button for daily updates!\n\n",
+            ["Shorts", "India", "ViralVideo", "TrendingShorts", "Amazing", "Gadgets", "Daily"]
+        ),
+        (
+            f"✨ {clean_title}\n\nWhat do you think about this? Let us know! 🗣️\n"
+            f"👉 Subscribe to our channel for the best viral content!\n\n",
+            ["Shorts", "Trending", "MustWatch", "HindiFacts", "Desi", "ViralIndia", "Wow"]
+        )
+    ]
+    
+    chosen_desc_template, chosen_tags = random.choice(desc_templates)
+    final_description = f"{chosen_desc_template}#Shorts #Viral #Trending"
     
     # Download
     v_file = download_video(target)
@@ -325,7 +346,8 @@ def main():
     
     # Upload
     try:
-        yt_id = upload_to_youtube(p_file, clean_title, final_description)
+        # Pass the dynamically chosen tags to the upload function
+        yt_id = upload_to_youtube(p_file, clean_title, final_description, chosen_tags)
         save_history(vid_id, yt_id, clean_title)
         log(f"SUCCESS: https://youtube.com/shorts/{yt_id}")
     except Exception as e:

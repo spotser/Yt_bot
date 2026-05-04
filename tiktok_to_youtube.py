@@ -265,10 +265,10 @@ def upload_to_youtube(video_path: Path, title: str, description: str, tags: list
 # ==========================================
 
 def main():
-    # Human-like randomness: Wait between 1 minute to 30 minutes before starting
+    # Human-like randomness: Wait between 10 seconds to 5 minutes before starting
     # This ensures GitHub Actions don't hit the API at the exact same minute every day
     import random
-    delay = random.randint(60, 1800)
+    delay = random.randint(10, 300)
     log(f"Human-like delay initiated: Waiting for {int(delay/60)} minutes and {delay%60} seconds...", "STEP")
     time.sleep(delay)
 

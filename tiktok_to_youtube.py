@@ -283,6 +283,9 @@ def main():
         log("Everything is up to date. No new videos.", "INFO")
         return
 
+    vid_id = str(target.get("video_id", target.get("id")))
+    raw_caption = target.get("title", "") or "New Short"
+    
     # --- Smart Caption Rewrite & SEO ---
     import random
     hooks = [

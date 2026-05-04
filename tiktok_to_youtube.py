@@ -23,7 +23,9 @@ from datetime import datetime
 # CONFIGURATION
 # ==========================================
 
-SEARCH_KEYWORDS   = os.environ.get("SEARCH_KEYWORDS", "funny viral, comedy clips, desi comedy, hilarious fails, trending comedy")
+SEARCH_KEYWORDS  = os.environ.get("SEARCH_KEYWORDS", "").strip()
+if not SEARCH_KEYWORDS:
+    SEARCH_KEYWORDS = "funny viral, comedy clips, desi comedy, hilarious fails, trending comedy"
 CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")
 TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"

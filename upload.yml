@@ -2,7 +2,7 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "30 10 * * *"   # 4:00 PM IST
+    - cron: "30 8 * * *"    # 2:00 PM IST
     - cron: "30 13 * * *"   # 7:00 PM IST
     - cron: "0  16 * * *"   # 9:30 PM IST
   workflow_dispatch:         # Manual run button
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write        # Necessary to push history update
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repo

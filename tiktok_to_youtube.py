@@ -110,22 +110,34 @@ def fetch_videos() -> list[dict]:
         "Accept-Language": "en-US,en;q=0.9"
     }
 
+    # News channels to skip
+    SKIP_WORDS = ["news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc"]
+
     for kw in keywords:
         log(f"Searching for viral videos: '{kw}'...", "STEP")
         try:
             params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
-            # Try searching using the feed/search endpoint
             resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
             
             if "Just a moment" in resp.text or resp.status_code == 403:
-                log(f"Cloudflare block detected for keyword '{kw}'. Trying backup method...", "WARN")
+                log(f"Cloudflare block detected for keyword '{kw}'.", "WARN")
                 continue
 
             data = resp.json()
             if data.get("code") == 0:
                 posts = data.get("data", {}).get("videos", [])
-                log(f"Found {len(posts)} videos for '{kw}'.")
-                all_videos.extend(posts)
+                filtered = []
+                for p in posts:
+                    author_name = p.get("author", {}).get("nickname", "").lower()
+                    author_id = p.get("author", {}).get("unique_id", "").lower()
+                    
+                    # Check if any skip word is in author name or id
+                    if any(word in author_name or word in author_id for word in SKIP_WORDS):
+                        continue
+                    filtered.append(p)
+                
+                log(f"Found {len(posts)} videos for '{kw}' (Kept {len(filtered)} after News filtering).")
+                all_videos.extend(filtered)
             else:
                 log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
                 
@@ -163,10 +175,12 @@ def process_video(input_path: Path) -> Path | None:
     output_path = PROCESSED_DIR / input_path.name
     log("Processing video (Scaling to 1080x1920)...", "STEP")
     
-    # FFmpeg filter: Scale to fit 1080x1920 and pad with black bars
+    # FFmpeg filter: Scale, Pad, and Add Watermark (@VIRALITY)
     vf = (
         "scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
+        "drawtext=text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:"
+        "shadowcolor=black:shadowx=2:shadowy=2"
     )
     
     cmd = (

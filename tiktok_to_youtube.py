@@ -272,7 +272,8 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
             font_path = f
             break
             
-    font_opt = f"fontfile='{font_path.replace('\\', '/')}'" if font_path else ""
+    font_path_fixed = font_path.replace('\\', '/')
+    font_opt = f"fontfile='{font_path_fixed}'" if font_path else ""
     
     # Safe text for FFmpeg (remove emojis/special chars that cause boxes)
     safe_text = hook_text.encode('ascii', 'ignore').decode('ascii').strip().replace("'", "").replace(":", "")

@@ -2,9 +2,11 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "30 8 * * *"    # 2:00 PM IST
-    - cron: "30 13 * * *"   # 7:00 PM IST
-    - cron: "0  16 * * *"   # 9:30 PM IST
+    - cron: "35 8 * * *"    # 2:05 PM IST
+    - cron: "45 10 * * *"   # 4:15 PM IST
+    - cron: "10 13 * * *"   # 6:40 PM IST
+    - cron: "20 15 * * *"   # 8:50 PM IST
+    - cron: "45 16 * * *"   # 10:15 PM IST
   workflow_dispatch:         # Manual run button
 
 jobs:

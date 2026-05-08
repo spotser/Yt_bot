@@ -40,6 +40,7 @@ BASE_DIR      = Path("temp_work")
 DOWNLOAD_DIR  = BASE_DIR / "downloads"
 PROCESSED_DIR = BASE_DIR / "processed"
 HISTORY_FILE  = Path("upload_history.txt")
+HASH_HISTORY  = Path("hash_history.txt")
 TOKEN_PATH    = BASE_DIR / "token.pickle"
 SECRETS_PATH  = BASE_DIR / "client_secrets.json"
 
@@ -90,13 +91,32 @@ def load_history() -> set:
             ids.add(line.split("|")[0].strip())
     return ids
 
-def save_history(tiktok_id: str, yt_id: str, title: str):
+def save_history(tiktok_id: str, yt_id: str, title: str, file_hash: str = ""):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if not HISTORY_FILE.exists():
         HISTORY_FILE.write_text("# TikTok → YouTube History\n\n", encoding="utf-8")
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
         f.write(f"{tiktok_id} | {yt_id} | {ts} | {title[:50]}\n")
-    log(f"History updated for video {tiktok_id}")
+    
+    if file_hash:
+        with open(HASH_HISTORY, "a", encoding="utf-8") as f:
+            f.write(f"{file_hash}\n")
+            
+    log(f"History and hash updated for video {tiktok_id}")
+
+def get_file_hash(path: Path) -> str:
+    import hashlib
+    hasher = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+def is_duplicate_hash(file_hash: str) -> bool:
+    if not HASH_HISTORY.exists():
+        return False
+    hashes = HASH_HISTORY.read_text(encoding="utf-8").splitlines()
+    return file_hash in [h.strip() for h in hashes if h.strip()]
 
 # ==========================================
 # CORE LOGIC
@@ -116,7 +136,7 @@ def fetch_videos() -> list[dict]:
     # Comprehensive Filter List to ensure maximum copyright safety and faceless content
     SKIP_WORDS = [
         # News Channels & Brands
-        "news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc", "cnn", "fox", "timesnow", "tv9", "news18", "thehindu",
+        "news", "aajtak", "abp", "zeenews", "ndtv", "republic", "dainik", "bhaskar", "indiatv", "bbc", "cnn", "fox", "timesnow", "tv9", "news18", "thehindu", "breaking", "press conference", "exclusive report", "journalist", "reporter",
         # Personal/Vlog/Talking Head (Face/Voice)
         "vlog", "storytime", "podcast", "interview", "grwm", "my voice", "day in my life", "get ready with me", "daily vlog", "my morning", "my night", "my story", "qna", "q&a",
         # Movies/TV Shows/Web Series (High Copyright Risk)
@@ -124,10 +144,39 @@ def fetch_videos() -> list[dict]:
         # Music/Songs/Labels (High Copyright Risk)
         "official video", "music video", "song", "tseries", "vevo", "singer", "album", "lyrics", "cover", "remix", "lofi", "dj ", "mtv",
         # Sports/Events (High Copyright Risk)
-        "ipl", "bcci", "icc", "wwe", "football", "cricket", "nba", "fifa", "ufc", "wrestling", "match", "highlights", "sports", "premier league", "champions"
+        "ipl", "bcci", "icc", "wwe", "football", "cricket", "nba", "fifa", "ufc", "wrestling", "match", "highlights", "sports", "premier league", "champions",
+        # Generic/Spam
+        "follow for more", "link in bio", "subscribe", "buy now", "sale", "discount", "promo"
     ]
 
-    for kw in keywords:
+    # --- SMART KEYWORD EXPANSION ---
+    import random
+    final_keywords = [k for k in keywords]
+    if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
+        try:
+            log("Expanding comedy keywords with AI...", "STEP")
+            prompt = f"Given these comedy keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral comedy shorts (e.g. 'desi comedy', 'office fails'). Return ONLY a comma-separated list of 3 keywords."
+            
+            # Simple direct call to Groq for keyword expansion
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7
+                },
+                timeout=15
+            )
+            expansion = resp.json()["choices"][0]["message"]["content"].strip()
+            if expansion and "," in expansion:
+                new_kws = [k.strip() for k in expansion.split(",") if k.strip()]
+                log(f"AI suggested new niches: {new_kws}")
+                final_keywords.extend(new_kws)
+        except Exception as e:
+            log(f"Expansion failed: {e}", "WARN")
+
+    for kw in final_keywords:
         log(f"Searching for viral videos: '{kw}'...", "STEP")
         for retry in range(3):
             try:
@@ -235,9 +284,15 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     # 2. Watermark: Bottom right corner
     watermark = f"drawtext={font_config}text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
 
+    # Digital Footprint Modification (Subtle enough to be invisible, strong enough for Content ID)
+    # - unsharp: Sharpens edges slightly
+    # - eq: Tiny boost to contrast and saturation
+    # - atempo: 1% speed increase (shifts audio fingerprint)
     vf = (
         f"scale=1080:1920:force_original_aspect_ratio=decrease,"
         f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
+        f"unsharp=5:5:0.8:5:5:0.8,"
+        f"eq=brightness=0.01:contrast=1.03:saturation=1.05,"
         f"{thumb_hook},"
         f"{watermark}"
     )
@@ -245,8 +300,9 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     cmd = (
         f'ffmpeg -y -i "{input_path}" '
         f'-vf "{vf}" '
-        f'-c:v libx264 -preset fast -crf 22 '
-        f'-c:a aac -b:a 128k '
+        f'-af "atempo=1.01" '
+        f'-c:v libx264 -preset slow -crf 18 '
+        f'-c:a aac -b:a 192k '
         f'"{output_path}"'
     )
     
@@ -440,6 +496,13 @@ def main():
     v_file = download_video(target)
     if not v_file: return
     
+    # --- CRITICAL DUPLICATE CHECK (HASH) ---
+    file_hash = get_file_hash(v_file)
+    if is_duplicate_hash(file_hash):
+        log("ABORT: Content already exists in history (Same video, different ID). Skipping.", "WARN")
+        if v_file.exists(): v_file.unlink()
+        return
+    
     # Process
     p_file = process_video(v_file, hook)
     if not p_file: return
@@ -448,7 +511,7 @@ def main():
     try:
         # Pass the dynamically chosen tags to the upload function
         yt_id = upload_to_youtube(p_file, clean_title, final_description, chosen_tags)
-        save_history(vid_id, yt_id, clean_title)
+        save_history(vid_id, yt_id, clean_title, file_hash)
         log(f"SUCCESS: https://youtube.com/shorts/{yt_id}")
     except Exception as e:
         log(f"YouTube Upload Failed: {e}", "ERR")

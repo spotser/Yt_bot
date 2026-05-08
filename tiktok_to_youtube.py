@@ -31,6 +31,7 @@ TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
 PRIVACY          = os.environ.get("YT_PRIVACY", "public")
 CATEGORY         = os.environ.get("YT_CATEGORY", "24") # 24 = Entertainment, 23 = Comedy
+GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -128,13 +129,21 @@ def fetch_videos() -> list[dict]:
 
     for kw in keywords:
         log(f"Searching for viral videos: '{kw}'...", "STEP")
+        for retry in range(3):
+            try:
+                params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
+                resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
+                
+                if "Just a moment" in resp.text or resp.status_code == 403:
+                    log(f"Cloudflare block detected (Attempt {retry+1}/3).", "WARN")
+                    time.sleep(5)
+                    continue
+                break
+            except Exception as e:
+                if retry == 2: raise e
+                time.sleep(5)
+        
         try:
-            params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
-            resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
-            
-            if "Just a moment" in resp.text or resp.status_code == 403:
-                log(f"Cloudflare block detected for keyword '{kw}'.", "WARN")
-                continue
 
             data = resp.json()
             if data.get("code") == 0:
@@ -167,6 +176,10 @@ def fetch_videos() -> list[dict]:
             log(f"Search error for '{kw}': {e}", "ERR")
             
     log(f"Total {len(all_videos)} videos pooled from all keywords.")
+    
+    # Sort by play count (Virality) to ensure we pick the best content
+    all_videos.sort(key=lambda x: x.get("play_count", 0), reverse=True)
+    
     return all_videos
 
 def download_video(v: dict) -> Path | None:
@@ -198,20 +211,31 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     
     # FFmpeg filters setup
     # Using a common Linux font path for GitHub Actions compatibility
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    font_opt = f"fontfile='{font_path}':" if os.path.exists(font_path) else ""
+    # Also checking common Windows font paths
+    possible_fonts = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", # Linux (GitHub Actions)
+        "C:\\Windows\\Fonts\\arialbd.ttf",                      # Windows Bold
+        "C:\\Windows\\Fonts\\arial.ttf"                         # Windows Regular
+    ]
+    font_path = ""
+    for f in possible_fonts:
+        if os.path.exists(f):
+            font_path = f
+            break
+            
+    font_opt = f"fontfile='{font_path.replace('\\', '/')}'" if font_path else ""
     
     # Safe text for FFmpeg (remove emojis/special chars that cause boxes)
     safe_text = hook_text.encode('ascii', 'ignore').decode('ascii').strip().replace("'", "").replace(":", "")
     
     # 1. Thumbnail Hook: Big yellow text in the middle, visible only for first 0.8 seconds
-    thumb_hook = f"drawtext={font_opt}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-text_w)/2:y=(h-text_h)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
+    font_config = f"{font_opt}:" if font_opt else ""
+    thumb_hook = f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-text_w)/2:y=(h-text_h)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
     
     # 2. Watermark: Bottom right corner
-    watermark = f"drawtext={font_opt}text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+    watermark = f"drawtext={font_config}text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
 
     vf = (
-        f"hflip," # Mirror effect to bypass copyright detection
         f"scale=1080:1920:force_original_aspect_ratio=decrease,"
         f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
         f"{thumb_hook},"
@@ -277,6 +301,43 @@ def upload_to_youtube(video_path: Path, title: str, description: str, tags: list
     return response["id"]
 
 # ==========================================
+# AI ENHANCEMENTS (GROQ)
+# ==========================================
+
+def generate_ai_metadata(original_title: str) -> str:
+    if not GROQ_API_KEY:
+        return None
+        
+    log("Generating AI Metadata using Groq...", "STEP")
+    prompt = (
+        f"You are a viral YouTube Shorts SEO expert.\n"
+        f"Video Topic: {original_title}\n\n"
+        f"Generate a viral package for this video.\n"
+        f"1. TITLE: Max 50 chars, high-CTR, use emojis. (Shorts Title)\n"
+        f"2. HOOK: Max 3 words, ALL CAPS (for video overlay).\n"
+        f"3. DESCRIPTION: 2-3 lines of engaging text + hashtags.\n"
+        f"4. TAGS: Exactly 5-7 highly relevant tags.\n\n"
+        f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
+    )
+    
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
+            },
+            timeout=20
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        log(f"AI Generation failed: {e}", "WARN")
+        return None
+
+# ==========================================
 # MAIN EXECUTION
 # ==========================================
 
@@ -318,45 +379,62 @@ def main():
     raw_caption = target.get("title", "") or "New Short"
     
     # --- Smart Caption Rewrite & SEO ---
-    import random
-    hooks = [
-        "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
-        "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
-        "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
-    ]
-    
-    # 1. Clean original caption
-    clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
-    clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
-    
-    # 2. Rewrite Title
-    hook = random.choice(hooks)
-    clean_title = f"{hook} {clean_orig}"
-    clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
-    
-    if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
-    
-    # 3. Dynamic Description & Tags Variations (Comedy Focused)
-    desc_templates = [
-        (
-            f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
-            f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
-            ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
-        ),
-        (
-            f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
-            f"🔔 Hit the subscribe button for daily funny videos!\n\n",
-            ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
-        ),
-        (
-            f"✨ {clean_title}\n\nTag a friend who needs to see this! 🗣️👇\n"
-            f"👉 Subscribe to our channel for the best comedy content!\n\n",
-            ["Shorts", "Trending", "MustWatch", "FunnyClips", "DesiComedy", "Prank", "Haha"]
-        )
-    ]
-    
-    chosen_desc_template, chosen_tags = random.choice(desc_templates)
-    final_description = f"{chosen_desc_template}#Shorts #Viral #Trending"
+    ai_meta = None
+    if GROQ_API_KEY:
+        try:
+            raw_ai = generate_ai_metadata(raw_caption)
+            if raw_ai:
+                import json
+                ai_meta = json.loads(raw_ai)
+                log("AI Metadata generated successfully.")
+        except Exception as e:
+            log(f"Failed to parse AI JSON: {e}", "WARN")
+
+    if ai_meta:
+        clean_title = ai_meta.get("title", raw_caption[:50])
+        hook = ai_meta.get("hook", "Wait for it! 😂")
+        final_description = ai_meta.get("description", "")
+        chosen_tags = ai_meta.get("tags", ["Shorts", "Viral"])
+    else:
+        # Fallback to legacy logic
+        hooks = [
+            "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
+            "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
+            "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
+        ]
+        
+        # 1. Clean original caption
+        clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
+        clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
+        
+        # 2. Rewrite Title
+        hook = random.choice(hooks)
+        clean_title = f"{hook} {clean_orig}"
+        clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
+        
+        if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
+        
+        # 3. Dynamic Description & Tags Variations (Comedy Focused)
+        desc_templates = [
+            (
+                f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
+                f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
+                ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
+            ),
+            (
+                f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
+                f"🔔 Hit the subscribe button for daily funny videos!\n\n",
+                ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
+            ),
+            (
+                f"✨ {clean_title}\n\nTag a friend who needs to see this! 🗣️👇\n"
+                f"👉 Subscribe to our channel for the best comedy content!\n\n",
+                ["Shorts", "Trending", "MustWatch", "FunnyClips", "DesiComedy", "Prank", "Haha"]
+            )
+        ]
+        
+        chosen_desc_template, chosen_tags = random.choice(desc_templates)
+        final_description = f"{chosen_desc_template}#Shorts #Viral #Trending"
     
     # Download
     v_file = download_video(target)

@@ -193,29 +193,49 @@ def fetch_videos() -> list[dict]:
                 time.sleep(5)
         
         try:
-
             data = resp.json()
             if data.get("code") == 0:
                 posts = data.get("data", {}).get("videos", [])
                 filtered = []
                 for p in posts:
+                    # 1. Author/Niche Filtering
                     author_name = p.get("author", {}).get("nickname", "").lower()
                     author_id = p.get("author", {}).get("unique_id", "").lower()
-                    
-                    # Check if any skip word is in author name or id
                     if any(word in author_name or word in author_id for word in SKIP_WORDS):
                         continue
                         
-                    # Time Filter: Skip videos older than 7 days
+                    # 2. Premium Content Filter (Resolution & Length)
+                    duration = p.get("duration", 0)
+                    width = p.get("width", 0)
+                    height = p.get("height", 0)
+                    
+                    if duration < 7 or duration > 58: # Too short or too long for Shorts
+                        continue
+                    if width < 540 or height < 960: # Avoid low-res junk
+                        continue
+
+                    # 3. Recency Filter
                     create_time = p.get("create_time", 0)
                     if create_time:
                         days_old = (time.time() - create_time) / (24 * 3600)
-                        if days_old > 7:
+                        if days_old > 10: # Increased to 10 days to find better quality
                             continue
                             
+                    # 4. Virality 2.0 (Calculate Engagement Score)
+                    views = p.get("play_count", 0)
+                    likes = p.get("digg_count", 0)
+                    comments = p.get("comment_count", 0)
+                    shares = p.get("share_count", 0)
+                    
+                    # Engagement Ratio (Avoid division by zero)
+                    if views > 1000:
+                        p["engagement_score"] = (likes + comments + shares) / views
+                    else:
+                        p["engagement_score"] = 0
+                        
                     filtered.append(p)
                 
-                log(f"Found {len(posts)} videos for '{kw}' (Kept {len(filtered)} after News filtering).")
+                log(f"Found {len(posts)} videos for '{kw}' (Kept {len(filtered)} after Premium filtering).")
                 all_videos.extend(filtered)
             else:
                 log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
@@ -226,8 +246,9 @@ def fetch_videos() -> list[dict]:
             
     log(f"Total {len(all_videos)} videos pooled from all keywords.")
     
-    # Sort by play count (Virality) to ensure we pick the best content
-    all_videos.sort(key=lambda x: x.get("play_count", 0), reverse=True)
+    # Sort by Virality 2.0 (Engagement Score)
+    # This prioritizes videos that people are actually interacting with
+    all_videos.sort(key=lambda x: x.get("engagement_score", 0), reverse=True)
     
     return all_videos
 

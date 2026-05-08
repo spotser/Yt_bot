@@ -209,11 +209,15 @@ def fetch_videos() -> list[dict]:
                     width = p.get("width", 0)
                     height = p.get("height", 0)
                     
-                    if duration < 7 or duration > 58: # Too short or too long for Shorts
+                    if duration < 5 or duration > 60: # Slightly relaxed range
+                        # log(f"Skipping {p.get('id')}: Duration {duration}s", "DEBUG")
                         continue
-                    if width < 540 or height < 960: # Avoid low-res junk
-                        continue
-
+                        
+                    # If width/height is missing, we check if it's likely vertical
+                    if width > 0 and height > 0:
+                        if height < width: # Horizontal video
+                            continue
+                    
                     # 3. Recency Filter
                     create_time = p.get("create_time", 0)
                     if create_time:
@@ -435,7 +439,7 @@ def main():
     videos = fetch_videos()
     
     if not videos:
-        log("No videos found on profile.", "WARN")
+        log("No videos found for search keywords.", "WARN")
         return
 
     if UPLOAD_OLDEST:

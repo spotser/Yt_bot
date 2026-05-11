@@ -304,48 +304,58 @@ def fetch_videos() -> list[dict]:
 # DRIVE SOURCING (AURA UPGRADE)
 # ==========================================
 
-def extract_folder_id(link_or_id: str) -> str | None:
+def extract_id(link_or_id: str) -> str | None:
     if not link_or_id: return None
-    match = re.search(r'(?:folders/|id=)([a-zA-Z0-9_-]{25,})', link_or_id)
+    # Support for folders, file links, and direct IDs
+    match = re.search(r'(?:folders/|id=|/d/|/file/d/)([a-zA-Z0-9_-]{25,})', link_or_id)
     return match.group(1) if match else link_or_id
 
-def download_from_drive(folder_url: str) -> Path | None:
-    folder_id = extract_folder_id(folder_url)
-    if not folder_id: return None
+def download_from_drive(drive_url: str) -> Path | None:
+    target_id = extract_id(drive_url)
+    if not target_id: return None
     
-    log(f"Sourcing from Public Drive Folder: {folder_id}", "STEP")
+    log(f"Sourcing from Google Drive: {target_id}", "STEP")
     try:
-        # Step 1: Scrape file IDs from the folder view
-        url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
-        resp = requests.get(url, timeout=15)
-        # Regex to find standard Drive file IDs (usually 33 chars, but can vary)
-        file_ids = list(set(re.findall(r'\"([a-zA-Z0-9_-]{28,35})\"', resp.text)))
+        # Step 1: Try to treat it as a FOLDER first (Scrape file IDs)
+        is_folder = "folders" in drive_url or "embeddedfolderview" in drive_url
         
-        if not file_ids:
-            log("No files found in Drive folder. Ensure it is 'Public' (Anyone with link can view).", "WARN")
-            return None
+        if is_folder:
+            url = f"https://drive.google.com/embeddedfolderview?id={target_id}"
+            resp = requests.get(url, timeout=15)
+            file_ids = list(set(re.findall(r'\"([a-zA-Z0-9_-]{28,35})\"', resp.text)))
             
-        random.shuffle(file_ids)
-        history = load_history()
+            if file_ids:
+                random.shuffle(file_ids)
+                history = load_history()
+                
+                final_id = None
+                for fid in file_ids:
+                    if fid not in history:
+                        final_id = fid
+                        break
+                
+                if not final_id:
+                    log("All videos in Drive folder have already been uploaded.", "INFO")
+                    return None
+                target_id = final_id
+            else:
+                log("No files found in folder view. Attempting direct file download...", "INFO")
         
-        target_id = None
-        for fid in file_ids:
-            if fid not in history:
-                target_id = fid
-                break
-        
-        if not target_id:
-            log("All videos in Drive folder have already been uploaded.", "INFO")
-            return None
-            
+        # Step 2: Download the file (Directly or from Folder selection)
         out = DOWNLOAD_DIR / f"drive_{target_id}.mp4"
         log(f"Downloading from Drive: {target_id}...", "STEP")
-        gdown.download(id=target_id, output=str(out), quiet=False)
+        
+        # Use gdown for robust download
+        result = gdown.download(id=target_id, output=str(out), quiet=False)
         
         if out.exists():
-            # Attach the drive ID so history can track it
-            out.rename(DOWNLOAD_DIR / f"drive_{target_id}.mp4") # Ensure naming
-            return Path(DOWNLOAD_DIR / f"drive_{target_id}.mp4")
+            # Check if it's a ZIP
+            if out.suffix.lower() == ".zip" or "zip" in str(result).lower():
+                log("WARNING: Downloaded file is a ZIP. YouTube automation only supports .mp4/.mov.", "WARN")
+                # Attempting to rename if gdown changed suffix
+                if not out.exists() and Path(str(result)).exists():
+                    out = Path(str(result))
+            return out
             
     except Exception as e:
         log(f"Drive fetch failed: {e}", "ERR")
@@ -620,7 +630,7 @@ def main():
         v_file = download_from_drive(DRIVE_FOLDER_URL)
         if v_file:
             vid_id = v_file.stem.replace("drive_", "")
-            raw_caption = "Viral Content from Drive"
+            raw_caption = f"Drive Content {vid_id}"
             log(f"Successfully sourced from Drive: {vid_id}")
 
     # 2. Fallback to TikTok Scraper

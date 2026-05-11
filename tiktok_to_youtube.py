@@ -441,7 +441,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     thumb_hook = (
         f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize={base_font_size}:"
         f"x=(w-tw)/2:y=(h-th)/2-150:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:"
-        f"enable='between(t,0,2.0)'"
+        f"enable='between(t,0,1.0)'"
     )
     
     # 2. Watermark: Centered horizontally, 30% from bottom

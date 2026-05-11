@@ -510,13 +510,14 @@ def generate_ai_metadata(original_title: str) -> str:
         
     log("Generating AI Metadata using Groq...", "STEP")
     prompt = (
-        f"You are a viral YouTube Shorts SEO expert.\n"
-        f"Video Topic: {original_title}\n\n"
-        f"Generate a viral package for this video.\n"
-        f"1. TITLE: Max 50 chars, high-CTR, use emojis. (Shorts Title)\n"
-        f"2. HOOK: Max 3 words, ALL CAPS (for video overlay).\n"
-        f"3. DESCRIPTION: 2-3 lines of engaging text + hashtags.\n"
-        f"4. TAGS: Exactly 5-7 highly relevant tags.\n\n"
+        f"You are a viral YouTube Shorts SEO expert specializing in STOICISM and HUMAN PSYCHOLOGY.\n"
+        f"Video Topic/Context: {original_title}\n\n"
+        f"Generate a unique, high-retention package for this video.\n"
+        f"1. TITLE: Max 50 chars. Use deep, curiosity-driven titles (e.g., 'The Stoic Secret to...', 'Why you feel...'). Emojis allowed but keep it professional/aesthetic.\n"
+        f"2. HOOK: Max 3 words, ALL CAPS (e.g., 'CONTROL YOUR MIND', 'ANCIENT WISDOM').\n"
+        f"3. DESCRIPTION: 2-3 lines of deep, thought-provoking text + 3-5 niche hashtags.\n"
+        f"4. TAGS: 5-7 tags like Stoicism, PsychologyFacts, MentalStrength, MarcusAurelius, etc.\n\n"
+        f"IMPORTANT: Do NOT repeat the same title or hooks used in previous generic viral videos. Be unique.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -557,12 +558,12 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             "tags": ai_meta.get("tags", ["Shorts", "Viral"])
         }
     
-    # --- FALLBACK LOGIC ---
-    log("Using fallback metadata logic.", "INFO")
+    # --- FALLBACK LOGIC (STOICISM & PSYCHOLOGY) ---
+    log("Using Stoicism/Psychology fallback metadata logic.", "INFO")
     hooks = [
-        "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
-        "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
-        "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
+        "CONTROL YOUR MIND", "ANCIENT WISDOM", "STAY CALM",
+        "BE UNSTOPPABLE", "PSYCHOLOGY TRICK", "STOP COMPLAINING",
+        "MASTER EMOTIONS", "STOIC MINDSET", "THE HARD TRUTH"
     ]
     
     # 1. Clean original caption
@@ -571,21 +572,26 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     
     # 2. Rewrite Title
     hook = random.choice(hooks)
-    clean_title = f"{hook} {clean_orig}"
+    if clean_orig and len(clean_orig) > 5:
+        clean_title = f"{hook}: {clean_orig[:40]}"
+    else:
+        clean_title = f"{hook} - Ancient Wisdom for You"
+    
     clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
-    if not clean_orig: clean_title = f"{hook} Shorts - {video_id}"
     
     # 3. Dynamic Description & Tags
     desc_templates = [
         (
-            f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
-            f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
-            ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
+            f"Control your mind, control your life. {clean_title}\n\n"
+            f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
+            f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n",
+            ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes"]
         ),
         (
-            f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
-            f"🔔 Hit the subscribe button for daily funny videos!\n\n",
-            ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
+            f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
+            f"Deep dive into human behavior and ancient philosophy for a better you.\n"
+            f"🔔 Subscribe for your daily dose of mental toughness!\n\n",
+            ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom"]
         )
     ]
     
@@ -593,7 +599,7 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     return {
         "title": clean_title,
         "hook": hook,
-        "description": f"{chosen_desc}#Shorts #Viral #Trending",
+        "description": f"{chosen_desc}#Shorts #Stoicism #Psychology #Mindset",
         "tags": chosen_tags
     }
 
@@ -627,11 +633,18 @@ def main():
     raw_caption = ""
 
     if DRIVE_FOLDER_URL:
-        v_file = download_from_drive(DRIVE_FOLDER_URL)
-        if v_file:
-            vid_id = v_file.stem.replace("drive_", "")
-            raw_caption = f"Drive Content {vid_id}"
-            log(f"Successfully sourced from Drive: {vid_id}")
+        drive_links = [l.strip() for l in DRIVE_FOLDER_URL.split(",") if l.strip()]
+        random.shuffle(drive_links)
+        
+        for link in drive_links:
+            v_file = download_from_drive(link)
+            if v_file:
+                vid_id = v_file.stem.replace("drive_", "")
+                raw_caption = f"Drive Content {vid_id}"
+                log(f"Successfully sourced from Drive: {vid_id}")
+                break
+            else:
+                log(f"No usable video found in Drive link: {link[:40]}...", "INFO")
 
     # 2. Fallback to TikTok Scraper
     if not v_file:

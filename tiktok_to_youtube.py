@@ -127,15 +127,18 @@ def get_authenticated_service():
 # HISTORY MANAGEMENT
 # ==========================================
 
-def load_history() -> set:
+def load_history() -> tuple[set, set]:
     if not HISTORY_FILE.exists():
-        return set()
+        return set(), set()
     ids = set()
+    titles = set()
     for line in HISTORY_FILE.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):
-            ids.add(line.split("|")[0].strip())
-    return ids
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) >= 1: ids.add(parts[0])
+            if len(parts) >= 4: titles.add(parts[3].lower())
+    return ids, titles
 
 def save_history(tiktok_id: str, yt_id: str, title: str, file_hash: str = ""):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -517,7 +520,7 @@ def generate_ai_metadata(original_title: str) -> str:
         f"2. HOOK: Max 3 words, ALL CAPS (e.g., 'CONTROL YOUR MIND', 'ANCIENT WISDOM').\n"
         f"3. DESCRIPTION: 2-3 lines of deep, thought-provoking text + 3-5 niche hashtags.\n"
         f"4. TAGS: 5-7 tags like Stoicism, PsychologyFacts, MentalStrength, MarcusAurelius, etc.\n\n"
-        f"IMPORTANT: Do NOT repeat the same title or hooks used in previous generic viral videos. Be unique.\n"
+        f"IMPORTANT: Do NOT repeat common phrases. Each title must be unique and thought-provoking. Avoid generic titles like 'Stoic Rule 1'. Instead use 'The Psychology of Self-Mastery' or 'Why Silence is your Greatest Power'.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -624,7 +627,7 @@ def main():
         log("Authentication failed. Aborting process to save quota/time.", "ERR")
         return
     
-    history = load_history()
+    history_ids, history_titles = load_history()
     
     # 1. Try Sourcing from Drive (Priority)
     target = None
@@ -640,6 +643,12 @@ def main():
             v_file = download_from_drive(link)
             if v_file:
                 vid_id = v_file.stem.replace("drive_", "")
+                if vid_id in history_ids:
+                    log(f"Video {vid_id} already in history. Skipping...", "INFO")
+                    v_file.unlink()
+                    v_file = None
+                    continue
+                    
                 raw_caption = f"Drive Content {vid_id}"
                 log(f"Successfully sourced from Drive: {vid_id}")
                 break
@@ -658,7 +667,7 @@ def main():
             
         for v in videos:
             temp_vid_id = str(v.get("video_id", v.get("id")))
-            if temp_vid_id not in history:
+            if temp_vid_id not in history_ids:
                 target = v
                 break
                 
@@ -676,6 +685,11 @@ def main():
     
     # Metadata
     meta = get_final_metadata(raw_caption, vid_id)
+    
+    # --- TITLE DUPLICATION CHECK ---
+    if meta["title"].lower() in history_titles:
+        log(f"Title '{meta['title']}' already exists in history. Adding randomness...", "WARN")
+        meta["title"] = f"{meta['title']} | {random.randint(10,99)}"
     
     # --- CRITICAL DUPLICATE CHECK (HASH) ---
     file_hash = get_file_hash(v_file)

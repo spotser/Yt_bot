@@ -256,7 +256,7 @@ def fetch_videos() -> list[dict]:
                     width = p.get("width", 0)
                     height = p.get("height", 0)
                     
-                    if duration < 5 or duration > 60: # Slightly relaxed range
+                    if duration < 10 or duration > 59: # 10s to 59s only for Shorts perfection
                         # log(f"Skipping {p.get('id')}: Duration {duration}s", "DEBUG")
                         continue
                         
@@ -430,8 +430,19 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     safe_text = escape_ffmpeg_text(hook_text)
     safe_watermark = escape_ffmpeg_text(WATERMARK_TEXT)
     
-    # 1. Thumbnail Hook: Big yellow text (first 0.8s)
-    thumb_hook = f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-tw)/2:y=(h-th)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
+    # --- DYNAMIC FONT SIZING FOR HOOK ---
+    # Standard is 90. If text is long, we shrink it.
+    base_font_size = 90
+    if len(safe_text) > 20: base_font_size = 70
+    if len(safe_text) > 30: base_font_size = 50
+    
+    # 1. Thumbnail Hook: Big yellow text (increased to 2s for better thumbnail chance)
+    # Added 'fix_bounds=1' to prevent any part of the box from going off-screen
+    thumb_hook = (
+        f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize={base_font_size}:"
+        f"x=(w-tw)/2:y=(h-th)/2-150:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:"
+        f"enable='between(t,0,2.0)'"
+    )
     
     # 2. Watermark: Centered horizontally, 30% from bottom
     watermark = f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"

@@ -2,9 +2,10 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "30 10 * * *"   # 04:00 PM IST (Afternoon Peak)
-    - cron: "30 13 * * *"   # 07:00 PM IST (Evening Peak)
-    - cron: "30 15 * * *"   # 09:00 PM IST (Night Peak)
+    - cron: "00 0 * * *"    # 05:30 AM IST (Asia Morning / US Night)
+    - cron: "00 6 * * *"    # 11:30 AM IST (Asia Afternoon / Europe Morning)
+    - cron: "00 12 * * *"   # 05:30 PM IST (Europe Peak / US Morning)
+    - cron: "00 18 * * *"   # 11:30 PM IST (US Peak)
   workflow_dispatch:         # Manual run button
 
 jobs:

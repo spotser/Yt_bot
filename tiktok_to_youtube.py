@@ -28,7 +28,7 @@ from datetime import datetime
 
 SEARCH_KEYWORDS  = os.environ.get("SEARCH_KEYWORDS", "").strip()
 if not SEARCH_KEYWORDS:
-    SEARCH_KEYWORDS = "funny viral, comedy clips, desi comedy, hilarious fails, trending comedy"
+    SEARCH_KEYWORDS = "stoic wisdom, psychology facts, ancient stoicism, human behavior secrets, dark psychology hacks, marcus aurelius quotes, mental toughness"
 CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")
 TOKEN_PICKLE_B64 = os.environ.get("TOKEN_PICKLE_B64", "")
 UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"

@@ -16,7 +16,7 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 print("🔄 Browser mein Google account select karo aur allow karo...\n")
 
 flow = InstalledAppFlow.from_client_secrets_file("client_secrets.json", SCOPES)
-creds = flow.run_local_server(port=0)
+creds = flow.run_local_server(port=0, access_type='offline', prompt='consent')
 
 with open("token.pickle", "wb") as f:
     pickle.dump(creds, f)

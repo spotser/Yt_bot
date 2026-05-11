@@ -2,18 +2,19 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "30 10 * * *"   # 4:00 PM IST
-    - cron: "30 13 * * *"   # 7:00 PM IST
-    - cron: "0  16 * * *"   # 9:30 PM IST
+    - cron: "30 10 * * *"   # 04:00 PM IST (Afternoon Peak)
+    - cron: "30 13 * * *"   # 07:00 PM IST (Evening Peak)
+    - cron: "30 15 * * *"   # 09:00 PM IST (Night Peak)
   workflow_dispatch:         # Manual run button
 
 jobs:
   upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    permissions:
+      contents: write        # Necessary to push history update
+    timeout-minutes: 60
 
     steps:
-
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -23,32 +24,27 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests google-auth google-auth-oauthlib google-api-python-client
+        run: |
+          pip install -r requirements.txt
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
-
-      - name: Restore upload history
-        uses: actions/cache@v4
-        with:
-          path: upload_history.txt
-          key: upload-history-${{ github.run_id }}
-          restore-keys: |
-            upload-history-
+      - name: Install FFmpeg & Fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
 
       - name: Run uploader
         env:
-          TIKTOK_USERNAME:     ${{ secrets.TIKTOK_USERNAME }}
+          SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS }}
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          DRIVE_FOLDER_URL:    ${{ secrets.DRIVE_FOLDER_URL }}
+          WATERMARK_TEXT:      ${{ secrets.WATERMARK_TEXT || '@VIRALITY' }}
           YT_PRIVACY:          public
-          YT_CATEGORY:         "22"
+          YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"
         run: python tiktok_to_youtube.py
 
-      - name: Save upload history
-        if: always()
-        uses: actions/cache@v4
+      - name: Commit & Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          path: upload_history.txt
-          key: upload-history-${{ github.run_id }}
+          commit_message: "Update upload history [skip ci]"
+          file_pattern: 'upload_history.txt hash_history.txt'

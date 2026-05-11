@@ -16,6 +16,9 @@ import pickle
 import subprocess
 import requests
 import time
+import random
+import hashlib
+import gdown
 from pathlib import Path
 from datetime import datetime
 
@@ -33,6 +36,7 @@ PRIVACY          = os.environ.get("YT_PRIVACY", "public")
 CATEGORY         = os.environ.get("YT_CATEGORY", "24") # 24 = Entertainment, 23 = Comedy
 GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
 DRIVE_FOLDER_URL = os.environ.get("DRIVE_FOLDER_URL", "").strip()
+WATERMARK_TEXT   = os.environ.get("WATERMARK_TEXT", "@VIRALITY").strip()
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -60,6 +64,16 @@ def run_cmd(cmd):
         raise RuntimeError(result.stderr.strip())
     return result.stdout.strip()
 
+def escape_ffmpeg_text(text: str) -> str:
+    """Escapes special characters for FFmpeg drawtext filter."""
+    if not text: return ""
+    # Remove characters that are extremely problematic
+    text = text.replace("'", "").replace(":", "")
+    # Escape backslash and comma
+    text = text.replace("\\", "\\\\").replace(",", "\\,")
+    # Remove non-ascii characters to be safe with most fonts
+    return text.encode('ascii', 'ignore').decode('ascii').strip()
+
 def setup_dirs():
     for d in [DOWNLOAD_DIR, PROCESSED_DIR]:
         d.mkdir(parents=True, exist_ok=True)
@@ -70,13 +84,44 @@ def validate_env():
         sys.exit(1)
 
 def write_secrets():
+    if not SECRETS_PATH.parent.exists():
+        SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        
     SECRETS_PATH.write_text(CLIENT_SECRETS, encoding="utf-8")
     try:
-        TOKEN_PATH.write_bytes(base64.b64decode(TOKEN_PICKLE_B64))
-        log("Authentication secrets loaded.")
+        token_data = base64.b64decode(TOKEN_PICKLE_B64)
+        TOKEN_PATH.write_bytes(token_data)
+        log("Authentication secrets loaded into temporary workspace.")
     except Exception as e:
-        log(f"Failed to decode TOKEN_PICKLE_B64: {e}", "ERR")
+        log(f"Failed to decode TOKEN_PICKLE_B64 secret: {e}", "ERR")
         sys.exit(1)
+
+def get_authenticated_service():
+    from googleapiclient.discovery import build
+    from google.auth.transport.requests import Request
+    
+    if not TOKEN_PATH.exists():
+        log("Token file missing. Ensure TOKEN_PICKLE_B64 is set correctly.", "ERR")
+        return None
+
+    with open(TOKEN_PATH, "rb") as f:
+        creds = pickle.load(f)
+
+    if creds and creds.expired and creds.refresh_token:
+        log("Token expired. Attempting to refresh...", "STEP")
+        try:
+            creds.refresh(Request())
+            with open(TOKEN_PATH, "wb") as f:
+                pickle.dump(creds, f)
+            log("Token refreshed successfully.")
+        except Exception as e:
+            log(f"Failed to refresh token: {e}", "ERR")
+            return None
+    elif creds and creds.expired and not creds.refresh_token:
+        log("CRITICAL: Token is expired and NO refresh token found. You must regenerate the token using generate_token.py locally.", "ERR")
+        return None
+
+    return build("youtube", "v3", credentials=creds)
 
 # ==========================================
 # HISTORY MANAGEMENT
@@ -106,7 +151,6 @@ def save_history(tiktok_id: str, yt_id: str, title: str, file_hash: str = ""):
     log(f"History and hash updated for video {tiktok_id}")
 
 def get_file_hash(path: Path) -> str:
-    import hashlib
     hasher = hashlib.md5()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -151,7 +195,6 @@ def fetch_videos() -> list[dict]:
     ]
 
     # --- SMART KEYWORD EXPANSION ---
-    import random
     final_keywords = [k for k in keywords]
     if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
         try:
@@ -272,12 +315,11 @@ def download_from_drive(folder_url: str) -> Path | None:
     
     log(f"Sourcing from Public Drive Folder: {folder_id}", "STEP")
     try:
-        import gdown
         # Step 1: Scrape file IDs from the folder view
         url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
         resp = requests.get(url, timeout=15)
-        # Regex to find 33-char file IDs (standard for Drive files)
-        file_ids = list(set(re.findall(r'\"([a-zA-Z0-9_-]{33})\"', resp.text)))
+        # Regex to find standard Drive file IDs (usually 33 chars, but can vary)
+        file_ids = list(set(re.findall(r'\"([a-zA-Z0-9_-]{28,35})\"', resp.text)))
         
         if not file_ids:
             log("No files found in Drive folder. Ensure it is 'Public' (Anyone with link can view).", "WARN")
@@ -341,8 +383,6 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     output_path = PROCESSED_DIR / input_path.name
     log("Processing video with 11-Layer Anti-Copyright Filter...", "STEP")
     
-    import random
-    
     # --- RANDOMIZED DNA PARAMETERS ---
     d = {
         "pts": round(random.uniform(0.98, 1.02), 4),       # Speed shift
@@ -374,13 +414,14 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     font_config = f"{font_opt}:" if font_opt else ""
 
     # Safe text for FFmpeg
-    safe_text = hook_text.encode('ascii', 'ignore').decode('ascii').strip().replace("'", "").replace(":", "")
+    safe_text = escape_ffmpeg_text(hook_text)
+    safe_watermark = escape_ffmpeg_text(WATERMARK_TEXT)
     
     # 1. Thumbnail Hook: Big yellow text (first 0.8s)
-    thumb_hook = f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-text_w)/2:y=(h-text_h)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
+    thumb_hook = f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-tw)/2:y=(h-th)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
     
     # 2. Watermark: Centered horizontally, 30% from bottom
-    watermark = f"drawtext={font_config}text='@VIRALITY':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
+    watermark = f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
 
     # --- 11 LAYER FILTER CHAIN ---
     v_filters = [
@@ -419,21 +460,8 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         log(f"FFmpeg failed: {e}", "ERR")
         return None
 
-def upload_to_youtube(video_path: Path, title: str, description: str, tags: list):
-    from googleapiclient.discovery import build
+def upload_to_youtube(youtube, video_path: Path, title: str, description: str, tags: list):
     from googleapiclient.http import MediaFileUpload
-    from google.auth.transport.requests import Request
-    
-    # Load Credentials
-    with open(TOKEN_PATH, "rb") as f:
-        creds = pickle.load(f)
-        
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_PATH, "wb") as f:
-            pickle.dump(creds, f)
-            
-    youtube = build("youtube", "v3", credentials=creds)
     
     body = {
         "snippet": {
@@ -566,14 +594,19 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 def main():
     # Human-like randomness: Wait between 10 seconds to 5 minutes before starting
     # This ensures GitHub Actions don't hit the API at the exact same minute every day
-    import random
-    delay = random.randint(10, 300)
-    log(f"Human-like delay initiated: Waiting for {int(delay/60)} minutes and {delay%60} seconds...", "STEP")
+    delay = random.randint(5, 60)
+    log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
     time.sleep(delay)
 
     validate_env()
     setup_dirs()
     write_secrets()
+    
+    # 0. Verify Auth Early
+    youtube = get_authenticated_service()
+    if not youtube:
+        log("Authentication failed. Aborting process to save quota/time.", "ERR")
+        return
     
     history = load_history()
     
@@ -629,20 +662,27 @@ def main():
         return
     
     # Process
-    p_file = process_video(v_file, meta["hook"])
-    if not p_file: return
-    
-    # Upload
+    p_file = None
     try:
-        yt_id = upload_to_youtube(p_file, meta["title"], meta["description"], meta["tags"])
+        p_file = process_video(v_file, meta["hook"])
+        if not p_file:
+            log("Video processing failed.", "ERR")
+            return
+        
+        # Upload
+        yt_id = upload_to_youtube(youtube, p_file, meta["title"], meta["description"], meta["tags"])
         save_history(vid_id, yt_id, meta["title"], file_hash)
         log(f"SUCCESS: https://youtube.com/shorts/{yt_id}")
     except Exception as e:
-        log(f"YouTube Upload Failed: {e}", "ERR")
+        log(f"Process/Upload Failed: {e}", "ERR")
     finally:
-        # Cleanup
-        if v_file.exists(): v_file.unlink()
-        if p_file.exists(): p_file.unlink()
+        # Cleanup both files if they exist
+        for f in [v_file, p_file]:
+            if f and f.exists():
+                try:
+                    f.unlink()
+                except:
+                    pass
 
 if __name__ == "__main__":
     main()

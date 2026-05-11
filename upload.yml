@@ -2,11 +2,9 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "35 8 * * *"    # 2:05 PM IST
-    - cron: "45 10 * * *"   # 4:15 PM IST
-    - cron: "10 13 * * *"   # 6:40 PM IST
-    - cron: "20 15 * * *"   # 8:50 PM IST
-    - cron: "45 16 * * *"   # 10:15 PM IST
+    - cron: "30 2 * * *"    # 08:00 AM IST (Morning Peak)
+    - cron: "00 8 * * *"    # 01:30 PM IST (Lunch Peak)
+    - cron: "30 13 * * *"   # 07:00 PM IST (Evening Peak)
   workflow_dispatch:         # Manual run button
 
 jobs:
@@ -27,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests google-auth google-auth-oauthlib google-api-python-client
+          pip install requests google-auth google-auth-oauthlib google-api-python-client gdown
 
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -38,6 +36,7 @@ jobs:
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
           GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          DRIVE_FOLDER_URL:    ${{ secrets.DRIVE_FOLDER_URL }}
           YT_PRIVACY:          public
           YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"

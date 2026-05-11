@@ -32,6 +32,7 @@ UPLOAD_OLDEST    = os.environ.get("UPLOAD_OLDEST", "false").lower() == "true"
 PRIVACY          = os.environ.get("YT_PRIVACY", "public")
 CATEGORY         = os.environ.get("YT_CATEGORY", "24") # 24 = Entertainment, 23 = Comedy
 GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
+DRIVE_FOLDER_URL = os.environ.get("DRIVE_FOLDER_URL", "").strip()
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -256,6 +257,58 @@ def fetch_videos() -> list[dict]:
     
     return all_videos
 
+# ==========================================
+# DRIVE SOURCING (AURA UPGRADE)
+# ==========================================
+
+def extract_folder_id(link_or_id: str) -> str | None:
+    if not link_or_id: return None
+    match = re.search(r'(?:folders/|id=)([a-zA-Z0-9_-]{25,})', link_or_id)
+    return match.group(1) if match else link_or_id
+
+def download_from_drive(folder_url: str) -> Path | None:
+    folder_id = extract_folder_id(folder_url)
+    if not folder_id: return None
+    
+    log(f"Sourcing from Public Drive Folder: {folder_id}", "STEP")
+    try:
+        import gdown
+        # Step 1: Scrape file IDs from the folder view
+        url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
+        resp = requests.get(url, timeout=15)
+        # Regex to find 33-char file IDs (standard for Drive files)
+        file_ids = list(set(re.findall(r'\"([a-zA-Z0-9_-]{33})\"', resp.text)))
+        
+        if not file_ids:
+            log("No files found in Drive folder. Ensure it is 'Public' (Anyone with link can view).", "WARN")
+            return None
+            
+        random.shuffle(file_ids)
+        history = load_history()
+        
+        target_id = None
+        for fid in file_ids:
+            if fid not in history:
+                target_id = fid
+                break
+        
+        if not target_id:
+            log("All videos in Drive folder have already been uploaded.", "INFO")
+            return None
+            
+        out = DOWNLOAD_DIR / f"drive_{target_id}.mp4"
+        log(f"Downloading from Drive: {target_id}...", "STEP")
+        gdown.download(id=target_id, output=str(out), quiet=False)
+        
+        if out.exists():
+            # Attach the drive ID so history can track it
+            out.rename(DOWNLOAD_DIR / f"drive_{target_id}.mp4") # Ensure naming
+            return Path(DOWNLOAD_DIR / f"drive_{target_id}.mp4")
+            
+    except Exception as e:
+        log(f"Drive fetch failed: {e}", "ERR")
+    return None
+
 def download_video(v: dict) -> Path | None:
     vid_id = str(v.get("video_id", v.get("id")))
     url = v.get("hdplay") or v.get("play")
@@ -279,13 +332,33 @@ def download_video(v: dict) -> Path | None:
         return None
 
 def process_video(input_path: Path, hook_text: str) -> Path | None:
-    """Smart Scaling: Keeps aspect ratio, adds black bars if needed to make it 1080x1920"""
+    """
+    11-Layer Anti-Copyright Filter System (Digital DNA)
+    - Randomized Visual & Audio fingerprinting
+    - Resolution-independent scaling
+    - Centered watermark at 30% from bottom
+    """
     output_path = PROCESSED_DIR / input_path.name
-    log("Processing video (Scaling, Mirroring, Thumbnail Hook, Watermark)...", "STEP")
+    log("Processing video with 11-Layer Anti-Copyright Filter...", "STEP")
     
-    # FFmpeg filters setup
-    # Using a common Linux font path for GitHub Actions compatibility
-    # Also checking common Windows font paths
+    import random
+    
+    # --- RANDOMIZED DNA PARAMETERS ---
+    d = {
+        "pts": round(random.uniform(0.98, 1.02), 4),       # Speed shift
+        "cw": round(random.uniform(0.97, 0.99), 3),        # Crop width (97-99%)
+        "cx": round(random.uniform(0.001, 0.005), 4),      # Crop offset
+        "brightness": round(random.uniform(-0.02, 0.02), 3),
+        "contrast": round(random.uniform(0.98, 1.05), 3),
+        "saturation": round(random.uniform(0.98, 1.1), 3),
+        "hue": round(random.uniform(-2, 2), 1),            # Subtle hue shift
+        "rotate": round(random.uniform(-0.01, 0.01), 4),   # Invisible tilt
+        "zoom": round(random.uniform(1.01, 1.05), 3),      # Ken Burns static zoom
+        "fps": random.choice([29.97, 30, 24]),             # Variable frame rate
+        "pitch": round(random.uniform(0.98, 1.02), 3),     # Audio pitch shift
+    }
+
+    # Font Setup
     possible_fonts = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", # Linux (GitHub Actions)
         "C:\\Windows\\Fonts\\arialbd.ttf",                      # Windows Bold
@@ -296,37 +369,44 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         if os.path.exists(f):
             font_path = f
             break
-            
     font_path_fixed = font_path.replace('\\', '/')
     font_opt = f"fontfile='{font_path_fixed}'" if font_path else ""
-    
-    # Safe text for FFmpeg (remove emojis/special chars that cause boxes)
+    font_config = f"{font_opt}:" if font_opt else ""
+
+    # Safe text for FFmpeg
     safe_text = hook_text.encode('ascii', 'ignore').decode('ascii').strip().replace("'", "").replace(":", "")
     
-    # 1. Thumbnail Hook: Big yellow text in the middle, visible only for first 0.8 seconds
-    font_config = f"{font_opt}:" if font_opt else ""
+    # 1. Thumbnail Hook: Big yellow text (first 0.8s)
     thumb_hook = f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize=90:x=(w-text_w)/2:y=(h-text_h)/2-150:box=1:boxcolor=black@0.7:boxborderw=25:enable='between(t,0,0.8)'"
     
-    # 2. Watermark: Bottom right corner
-    watermark = f"drawtext={font_config}text='@VIRALITY':fontcolor=white@0.6:fontsize=45:x=w-tw-50:y=h-th-100:shadowcolor=black:shadowx=2:shadowy=2"
+    # 2. Watermark: Centered horizontally, 30% from bottom
+    watermark = f"drawtext={font_config}text='@VIRALITY':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
 
-    # Digital Footprint Modification (Subtle enough to be invisible, strong enough for Content ID)
-    # - unsharp: Sharpens edges slightly
-    # - eq: Tiny boost to contrast and saturation
-    # - atempo: 1% speed increase (shifts audio fingerprint)
-    vf = (
-        f"scale=1080:1920:force_original_aspect_ratio=decrease,"
-        f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2,"
-        f"unsharp=5:5:0.8:5:5:0.8,"
-        f"eq=brightness=0.01:contrast=1.03:saturation=1.05,"
-        f"{thumb_hook},"
-        f"{watermark}"
-    )
+    # --- 11 LAYER FILTER CHAIN ---
+    v_filters = [
+        f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", # Layer 1: Standardize resolution
+        f"setpts={d['pts']}*PTS",                                               # Layer 2: Speed Shift
+        f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']}",            # Layer 3: Random Edge Crop
+        f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}", # Layer 4: Color EQ
+        f"hue=h={d['hue']}",                                                    # Layer 5: Hue Shift
+        f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Invisible Tilt
+        f"scale=iw*{d['zoom']}:ih*{d['zoom']},crop=1080:1920",                  # Layer 7: Static Zoom
+        f"noise=c0s=2:c0f=t+u",                                                 # Layer 8: Film Grain
+        f"unsharp=5:5:0.8:5:5:0.0",                                             # Layer 9: Sharpening
+        f"fps={d['fps']}",                                                      # Layer 10: FPS Manipulation
+        thumb_hook,                                                             # Layer 11a: Overlay Hook
+        watermark                                                               # Layer 11b: Watermark
+    ]
     
+    vf = ",".join(v_filters)
+    
+    # Audio filters: Pitch and Speed
+    af = f"asetrate=44100*{d['pitch']},atempo={d['pts']}/{d['pitch']},aresample=44100"
+
     cmd = (
         f'ffmpeg -y -i "{input_path}" '
         f'-vf "{vf}" '
-        f'-af "atempo=1.01" '
+        f'-af "{af}" '
         f'-c:v libx264 -preset slow -crf 18 '
         f'-c:a aac -b:a 192k '
         f'"{output_path}"'
@@ -436,31 +516,47 @@ def main():
     write_secrets()
     
     history = load_history()
-    videos = fetch_videos()
     
-    if not videos:
-        log("No videos found for search keywords.", "WARN")
-        return
-
-    if UPLOAD_OLDEST:
-        videos.reverse()
-        
-    # Find next video to upload
+    # 1. Try Sourcing from Drive (Priority)
     target = None
-    for v in videos:
-        vid_id = str(v.get("video_id", v.get("id")))
-        if vid_id not in history:
-            target = v
-            break
-            
-    if not target:
-        log("Everything is up to date. No new videos.", "INFO")
-        return
+    v_file = None
+    vid_id = None
+    raw_caption = ""
 
-    vid_id = str(target.get("video_id", target.get("id")))
-    raw_caption = target.get("title", "") or "New Short"
-    
-    # --- Smart Caption Rewrite & SEO ---
+    if DRIVE_FOLDER_URL:
+        v_file = download_from_drive(DRIVE_FOLDER_URL)
+        if v_file:
+            vid_id = v_file.stem.replace("drive_", "")
+            raw_caption = "Viral Content from Drive"
+            log(f"Successfully sourced from Drive: {vid_id}")
+
+    # 2. Fallback to TikTok Scraper
+    if not v_file:
+        videos = fetch_videos()
+        if not videos:
+            log("No videos found for search keywords.", "WARN")
+            return
+
+        if UPLOAD_OLDEST:
+            videos.reverse()
+            
+        for v in videos:
+            temp_vid_id = str(v.get("video_id", v.get("id")))
+            if temp_vid_id not in history:
+                target = v
+                break
+                
+        if not target:
+            log("Everything is up to date. No new videos.", "INFO")
+            return
+
+        vid_id = str(target.get("video_id", target.get("id")))
+        raw_caption = target.get("title", "") or "New Short"
+        v_file = download_video(target)
+
+    if not v_file:
+        log("Failed to source any video.", "ERR")
+        return
     ai_meta = None
     if GROQ_API_KEY:
         try:
@@ -517,10 +613,6 @@ def main():
         
         chosen_desc_template, chosen_tags = random.choice(desc_templates)
         final_description = f"{chosen_desc_template}#Shorts #Viral #Trending"
-    
-    # Download
-    v_file = download_video(target)
-    if not v_file: return
     
     # --- CRITICAL DUPLICATE CHECK (HASH) ---
     file_hash = get_file_hash(v_file)

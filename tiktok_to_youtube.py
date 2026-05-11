@@ -21,6 +21,7 @@ import hashlib
 import gdown
 from pathlib import Path
 from datetime import datetime
+import textwrap
 
 # ==========================================
 # CONFIGURATION
@@ -430,17 +431,31 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     safe_text = escape_ffmpeg_text(hook_text)
     safe_watermark = escape_ffmpeg_text(WATERMARK_TEXT)
     
-    # --- DYNAMIC FONT SIZING FOR HOOK ---
-    # Standard is 90. If text is long, we shrink it.
+    # --- DYNAMIC FONT SIZING & WRAPPING FOR HOOK ---
+    # Standard is 90. If text is long, we wrap it and shrink it.
+    wrapped_text = safe_text
     base_font_size = 90
-    if len(safe_text) > 20: base_font_size = 70
-    if len(safe_text) > 30: base_font_size = 50
     
+    if len(safe_text) > 15:
+        # Wrap at approx 15-20 characters per line for vertical video (1080px)
+        wrapped_text = "\n".join(textwrap.wrap(safe_text, width=15))
+        base_font_size = 80
+    if len(safe_text) > 30:
+        wrapped_text = "\n".join(textwrap.wrap(safe_text, width=18))
+        base_font_size = 65
+    if len(safe_text) > 50:
+        wrapped_text = "\n".join(textwrap.wrap(safe_text, width=22))
+        base_font_size = 50
+
     # 1. Thumbnail Hook: Big yellow text (increased to 2s for better thumbnail chance)
-    # Added 'fix_bounds=1' to prevent any part of the box from going off-screen
+    # Using textfile for robust multiline handling
+    hook_file = PROCESSED_DIR / f"{input_path.stem}_hook.txt"
+    hook_file.write_text(wrapped_text, encoding="utf-8")
+    hook_file_path = str(hook_file).replace('\\', '/')
+    
     thumb_hook = (
-        f"drawtext={font_config}text='{safe_text}':fontcolor=yellow:fontsize={base_font_size}:"
-        f"x=(w-tw)/2:y=(h-th)/2-150:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:"
+        f"drawtext={font_config}textfile='{hook_file_path}':fontcolor=yellow:fontsize={base_font_size}:"
+        f"x=(w-tw)/2:y=(h-th)/2-200:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:line_spacing=10:"
         f"enable='between(t,0,1.0)'"
     )
     
@@ -525,13 +540,14 @@ def generate_ai_metadata(original_title: str) -> str:
     log("Generating AI Metadata using Groq...", "STEP")
     prompt = (
         f"You are a viral YouTube Shorts SEO expert specializing in STOICISM and HUMAN PSYCHOLOGY.\n"
+        f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
         f"Video Topic/Context: {original_title}\n\n"
         f"Generate a unique, high-retention package for this video.\n"
-        f"1. TITLE: Max 50 chars. Use deep, curiosity-driven titles (e.g., 'The Stoic Secret to...', 'Why you feel...'). Emojis allowed but keep it professional/aesthetic.\n"
+        f"1. TITLE: Max 85 chars. Create a deep, curiosity-driven title AND append exactly 3 trending hashtags (e.g., 'The Stoic Secret #stoic #mindset #wisdom'). Ensure total length is under 100 chars.\n"
         f"2. HOOK: Max 3 words, ALL CAPS (e.g., 'CONTROL YOUR MIND', 'ANCIENT WISDOM').\n"
-        f"3. DESCRIPTION: 2-3 lines of deep, thought-provoking text + 3-5 niche hashtags.\n"
-        f"4. TAGS: 5-7 tags like Stoicism, PsychologyFacts, MentalStrength, MarcusAurelius, etc.\n\n"
-        f"IMPORTANT: Do NOT repeat common phrases. Each title must be unique and thought-provoking. Avoid generic titles like 'Stoic Rule 1'. Instead use 'The Psychology of Self-Mastery' or 'Why Silence is your Greatest Power'.\n"
+        f"3. DESCRIPTION: 2-3 lines of deep, thought-provoking text + exactly 20 trending/viral niche hashtags relevant to today's date ({datetime.now().strftime('%Y')}).\n"
+        f"4. TAGS: 10-15 tags like Stoicism, PsychologyFacts, MentalStrength, MarcusAurelius, etc.\n\n"
+        f"IMPORTANT: Do NOT repeat common phrases. Each title must be unique. Ensure the title contains 3 hashtags at the end.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -584,28 +600,37 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
     clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
     
-    # 2. Rewrite Title
+    # 2. Rewrite Title with 3 hashtags
     hook = random.choice(hooks)
+    title_hashtags = "#stoic #mindset #wisdom"
     if clean_orig and len(clean_orig) > 5:
-        clean_title = f"{hook}: {clean_orig[:40]}"
+        clean_title = f"{hook}: {clean_orig[:40]} {title_hashtags}"
     else:
-        clean_title = f"{hook} - Ancient Wisdom for You"
+        clean_title = f"{hook} - Ancient Wisdom {title_hashtags}"
     
     clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
     
-    # 3. Dynamic Description & Tags
+    # 3. Dynamic Description & 20 Tags
+    trending_20 = (
+        "#stoicism #psychology #mindset #wisdom #mentalstrength #stoicquotes "
+        "#humanbehavior #darkpsychology #growth #selfimprovement #discipline "
+        "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks #success #mentalhealth"
+    )
+    
     desc_templates = [
         (
             f"Control your mind, control your life. {clean_title}\n\n"
             f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
-            f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n",
-            ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes"]
+            f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n"
+            f"{trending_20}",
+            ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes", "Viral", "Shorts"]
         ),
         (
             f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
             f"Deep dive into human behavior and ancient philosophy for a better you.\n"
-            f"🔔 Subscribe for your daily dose of mental toughness!\n\n",
-            ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom"]
+            f"🔔 Subscribe for your daily dose of mental toughness!\n\n"
+            f"{trending_20}",
+            ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom", "Viral", "Shorts"]
         )
     ]
     
@@ -613,7 +638,7 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     return {
         "title": clean_title,
         "hook": hook,
-        "description": f"{chosen_desc}#Shorts #Stoicism #Psychology #Mindset",
+        "description": chosen_desc,
         "tags": chosen_tags
     }
 
@@ -724,13 +749,20 @@ def main():
     except Exception as e:
         log(f"Process/Upload Failed: {e}", "ERR")
     finally:
-        # Cleanup both files if they exist
+        # Cleanup files
         for f in [v_file, p_file]:
             if f and f.exists():
                 try:
                     f.unlink()
                 except:
                     pass
+        
+        # Cleanup hook text file
+        try:
+            hook_file = PROCESSED_DIR / f"{v_file.stem}_hook.txt"
+            if hook_file.exists(): hook_file.unlink()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()

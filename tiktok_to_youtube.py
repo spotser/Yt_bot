@@ -499,6 +499,66 @@ def generate_ai_metadata(original_title: str) -> str:
         log(f"AI Generation failed: {e}", "WARN")
         return None
 
+def get_final_metadata(raw_caption: str, video_id: str) -> dict:
+    """Consolidated metadata logic: AI first, then fallback."""
+    ai_meta = None
+    if GROQ_API_KEY:
+        try:
+            raw_ai = generate_ai_metadata(raw_caption)
+            if raw_ai:
+                ai_meta = json.loads(raw_ai)
+                log("AI Metadata generated successfully.")
+        except Exception as e:
+            log(f"AI Metadata parsing failed: {e}", "WARN")
+
+    if ai_meta:
+        return {
+            "title": ai_meta.get("title", raw_caption[:50]),
+            "hook": ai_meta.get("hook", "Wait for it! 😂"),
+            "description": ai_meta.get("description", ""),
+            "tags": ai_meta.get("tags", ["Shorts", "Viral"])
+        }
+    
+    # --- FALLBACK LOGIC ---
+    log("Using fallback metadata logic.", "INFO")
+    hooks = [
+        "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
+        "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
+        "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
+    ]
+    
+    # 1. Clean original caption
+    clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
+    clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
+    
+    # 2. Rewrite Title
+    hook = random.choice(hooks)
+    clean_title = f"{hook} {clean_orig}"
+    clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
+    if not clean_orig: clean_title = f"{hook} Shorts - {video_id}"
+    
+    # 3. Dynamic Description & Tags
+    desc_templates = [
+        (
+            f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
+            f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
+            ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
+        ),
+        (
+            f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
+            f"🔔 Hit the subscribe button for daily funny videos!\n\n",
+            ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
+        )
+    ]
+    
+    chosen_desc, chosen_tags = random.choice(desc_templates)
+    return {
+        "title": clean_title,
+        "hook": hook,
+        "description": f"{chosen_desc}#Shorts #Viral #Trending",
+        "tags": chosen_tags
+    }
+
 # ==========================================
 # MAIN EXECUTION
 # ==========================================
@@ -557,62 +617,9 @@ def main():
     if not v_file:
         log("Failed to source any video.", "ERR")
         return
-    ai_meta = None
-    if GROQ_API_KEY:
-        try:
-            raw_ai = generate_ai_metadata(raw_caption)
-            if raw_ai:
-                import json
-                ai_meta = json.loads(raw_ai)
-                log("AI Metadata generated successfully.")
-        except Exception as e:
-            log(f"Failed to parse AI JSON: {e}", "WARN")
-
-    if ai_meta:
-        clean_title = ai_meta.get("title", raw_caption[:50])
-        hook = ai_meta.get("hook", "Wait for it! 😂")
-        final_description = ai_meta.get("description", "")
-        chosen_tags = ai_meta.get("tags", ["Shorts", "Viral"])
-    else:
-        # Fallback to legacy logic
-        hooks = [
-            "Wait for it! 😂", "Must Watch! 🤣", "Ending will kill you! 💀",
-            "Try not to laugh! 😆", "This is hilarious! 🚀", "Tag a friend who would do this 👇",
-            "Best comedy video today! 🌟", "Omg! I can't stop laughing 🤣"
-        ]
-        
-        # 1. Clean original caption
-        clean_orig = re.sub(r'#(tiktok|fyp|foryou|foryoupage|tik_tok)\S*', '', raw_caption, flags=re.IGNORECASE)
-        clean_orig = re.sub(r'\s+', ' ', clean_orig).strip()
-        
-        # 2. Rewrite Title
-        hook = random.choice(hooks)
-        clean_title = f"{hook} {clean_orig}"
-        clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
-        
-        if not clean_orig: clean_title = f"{hook} Shorts - {vid_id}"
-        
-        # 3. Dynamic Description & Tags Variations (Comedy Focused)
-        desc_templates = [
-            (
-                f"{clean_title}\n\nAapko ye video kaisi lagi? Comment mein bataein! 👇\n\n"
-                f"✅ Subscribe for more daily comedy & viral shorts!\n🔥 Keep smiling and sharing.\n\n",
-                ["Shorts", "Comedy", "Funny", "Viral", "Hilarious", "Trending", "Laugh"]
-            ),
-            (
-                f"🔥 {clean_title}\n\nDon't forget to like and share if this made you laugh! 😂\n"
-                f"🔔 Hit the subscribe button for daily funny videos!\n\n",
-                ["Shorts", "FunnyVideo", "ComedyShorts", "ViralComedy", "Meme", "Lol", "Daily"]
-            ),
-            (
-                f"✨ {clean_title}\n\nTag a friend who needs to see this! 🗣️👇\n"
-                f"👉 Subscribe to our channel for the best comedy content!\n\n",
-                ["Shorts", "Trending", "MustWatch", "FunnyClips", "DesiComedy", "Prank", "Haha"]
-            )
-        ]
-        
-        chosen_desc_template, chosen_tags = random.choice(desc_templates)
-        final_description = f"{chosen_desc_template}#Shorts #Viral #Trending"
+    
+    # Metadata
+    meta = get_final_metadata(raw_caption, vid_id)
     
     # --- CRITICAL DUPLICATE CHECK (HASH) ---
     file_hash = get_file_hash(v_file)
@@ -622,14 +629,13 @@ def main():
         return
     
     # Process
-    p_file = process_video(v_file, hook)
+    p_file = process_video(v_file, meta["hook"])
     if not p_file: return
     
     # Upload
     try:
-        # Pass the dynamically chosen tags to the upload function
-        yt_id = upload_to_youtube(p_file, clean_title, final_description, chosen_tags)
-        save_history(vid_id, yt_id, clean_title, file_hash)
+        yt_id = upload_to_youtube(p_file, meta["title"], meta["description"], meta["tags"])
+        save_history(vid_id, yt_id, meta["title"], file_hash)
         log(f"SUCCESS: https://youtube.com/shorts/{yt_id}")
     except Exception as e:
         log(f"YouTube Upload Failed: {e}", "ERR")

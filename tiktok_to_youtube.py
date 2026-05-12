@@ -470,7 +470,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}", # Layer 4: Color EQ
         f"hue=h={d['hue']}",                                                    # Layer 5: Hue Shift
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Invisible Tilt
-        f"scale=iw*{d['zoom']}:ih*{d['zoom']},crop=1080:1920",                  # Layer 7: Static Zoom
+        f"scale=1080:1920:force_original_aspect_ratio=increase,scale=iw*{d['zoom']}:ih*{d['zoom']},crop=1080:1920",                  # Layer 7: Static Zoom
         f"noise=c0s=2:c0f=t+u",                                                 # Layer 8: Film Grain
         f"unsharp=5:5:0.8:5:5:0.0",                                             # Layer 9: Sharpening
         f"fps={d['fps']}",                                                      # Layer 10: FPS Manipulation

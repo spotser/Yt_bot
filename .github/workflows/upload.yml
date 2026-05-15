@@ -53,11 +53,15 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # 1. Stage and commit history
           git add upload_history.txt hash_history.txt || true
+          git commit -m "Update upload history [skip ci]" || echo "No changes to commit"
           
-          if git commit -m "Update upload history [skip ci]"; then
-            git pull --rebase origin main
-            git push origin main
-          else
-            echo "No changes to commit"
-          fi
+          # 2. Stash any remaining unstaged changes to allow rebase
+          git stash push --include-untracked || true
+          
+          # 3. Pull latest with rebase
+          git pull --rebase origin main
+          
+          # 4. Final push
+          git push origin main

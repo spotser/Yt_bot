@@ -50,10 +50,11 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git pull --rebase origin main
-          
           git add upload_history_ch2.txt hash_history_ch2.txt || true
           
-          git commit -m "Update CH2 history [skip ci]" || echo "No changes to commit"
-          
-          git push origin main
+          if git commit -m "Update CH2 history [skip ci]"; then
+            git pull --rebase origin main
+            git push origin main
+          else
+            echo "No changes to commit"
+          fi

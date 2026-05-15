@@ -1,0 +1,43 @@
+name: Aura Engine - Channel #2 (Boltas Clips)
+
+on:
+  schedule:
+    - cron: "30 5 * * *"    # 11:00 AM IST (Lunch Prep)
+    - cron: "30 11 * * *"   # 05:00 PM IST (Evening Prep)
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install requests google-auth google-auth-oauthlib google-api-python-client
+
+      - name: Install FFmpeg & Fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Run Channel #2 (Boltas Clips)
+        env:
+          TIKTOK_PROFILE_ID:   ${{ secrets.TIKTOK_PROFILE_ID }}
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
+          TOKEN_PICKLE_B64_CH2: ${{ secrets.TOKEN_PICKLE_B64_CH2 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          SYSTEM_LICENSE_KEY:  ${{ secrets.SYSTEM_LICENSE_KEY }}
+          WATERMARK_TEXT_CH2:  ${{ secrets.WATERMARK_TEXT_CH2 || '@BOLTAS_CLIPS' }}
+          YT_PRIVACY:          public
+          YT_CATEGORY:         "24"
+        run: python tiktok_profile_to_youtube.py
+
+      - name: Commit & Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update CH2 upload history [skip ci]"
+          file_pattern: 'upload_history_ch2.txt hash_history_ch2.txt'

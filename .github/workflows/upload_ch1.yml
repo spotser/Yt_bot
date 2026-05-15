@@ -1,0 +1,45 @@
+name: Aura Engine - Channel #1 (Global)
+
+on:
+  schedule:
+    - cron: "00 0 * * *"    # 05:30 AM IST
+    - cron: "00 8 * * *"    # 01:30 PM IST
+    - cron: "00 15 * * *"   # 08:30 PM IST
+    - cron: "00 20 * * *"   # 01:30 AM IST
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install requests google-auth google-auth-oauthlib google-api-python-client
+
+      - name: Install FFmpeg & Fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Run Channel #1
+        env:
+          SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS }}
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
+          TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          SYSTEM_LICENSE_KEY:  ${{ secrets.SYSTEM_LICENSE_KEY }}
+          WATERMARK_TEXT:      ${{ secrets.WATERMARK_TEXT || '@VIRALITY' }}
+          YT_PRIVACY:          public
+          YT_CATEGORY:         "24"
+        run: python tiktok_to_youtube.py
+
+      - name: Commit & Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update CH1 upload history [skip ci]"
+          file_pattern: 'upload_history.txt hash_history.txt'

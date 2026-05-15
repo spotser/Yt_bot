@@ -18,8 +18,10 @@ import requests
 import time
 import random
 import hashlib
+import gdown
 from pathlib import Path
 from datetime import datetime
+import textwrap
 
 # ==========================================
 # CONFIGURATION (PRO-SERIES 2026)
@@ -51,11 +53,12 @@ SECRETS_PATH  = BASE_DIR / "client_secrets.json"
 # ==========================================
 
 def verify_license():
-    log(f"System Check: [{LICENSE_KEY}]", "STEP")
-    if LICENSE_KEY == "COMMUNITY-EDITION":
-        log("Running Aura Engine: Community Edition", "INFO")
-        return
-    log("Aura Engine 2026 PRO: Active & Authorized.", "INFO")
+    log(f"Verifying License: [{LICENSE_KEY}]", "STEP")
+    # Simulation of proprietary licensing check
+    if len(LICENSE_KEY) < 10 and LICENSE_KEY != "COMMUNITY-EDITION":
+        log("INVALID LICENSE: Please contact administrator for Aura Engine 2026 Key.", "ERR")
+        sys.exit(1)
+    log("Aura Engine 2026: License Authorized.", "INFO")
 
 # ==========================================
 # HELPERS

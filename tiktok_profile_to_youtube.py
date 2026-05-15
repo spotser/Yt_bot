@@ -255,8 +255,23 @@ def get_ai_meta(raw_title: str) -> dict:
 
 def upload_to_yt(youtube, path: Path, meta: dict):
     from googleapiclient.http import MediaFileUpload
+    
+    # Ensure description is a string
+    desc = meta.get("desc", "")
+    if isinstance(desc, list): desc = "\n".join(desc)
+    desc = desc[:5000] # YouTube limit
+    
+    # Ensure tags is a list
+    tags = meta.get("tags", ["shorts", "viral"])
+    if isinstance(tags, str): tags = [t.strip() for t in tags.split(",")]
+
     body = {
-        "snippet": {"title": meta["title"][:100], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
+        "snippet": {
+            "title": str(meta.get("title", "Viral Shorts"))[:100],
+            "description": desc,
+            "categoryId": CATEGORY,
+            "tags": tags
+        },
         "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}
     }
     media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)

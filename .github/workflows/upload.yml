@@ -2,11 +2,13 @@ name: TikTok → YouTube Shorts
 
 on:
   schedule:
-    - cron: "00 0 * * *"    # 05:30 AM IST (Asia Morning / US Night)
-    - cron: "00 6 * * *"    # 11:30 AM IST (Asia Afternoon / Europe Morning)
-    - cron: "00 12 * * *"   # 05:30 PM IST (Europe Peak / US Morning)
-    - cron: "00 18 * * *"   # 11:30 PM IST (US Peak)
-  workflow_dispatch:         # Manual run button
+    - cron: "00 0 * * *"    # 05:30 AM IST (CH1)
+    - cron: "00 6 * * *"    # 11:30 AM IST (CH1)
+    - cron: "00 8 * * *"    # 01:30 PM IST (CH2 PEAK 1)
+    - cron: "00 12 * * *"   # 05:30 PM IST (CH1)
+    - cron: "00 15 * * *"   # 08:30 PM IST (CH2 PEAK 2)
+    - cron: "00 18 * * *"   # 11:30 PM IST (CH1)
+  workflow_dispatch:
 
 jobs:
   upload:
@@ -43,8 +45,8 @@ jobs:
           YT_CATEGORY:         "24"
         run: python tiktok_to_youtube.py
 
-      - name: Run Channel #2 (2x Daily - 00:00 & 12:00 UTC)
-        if: github.event.schedule == '00 0 * * *' || github.event.schedule == '00 12 * * *' || github.event_name == 'workflow_dispatch'
+      - name: Run Channel #2 (India Peak: 1:30 PM & 8:30 PM)
+        if: github.event.schedule == '00 8 * * *' || github.event.schedule == '00 15 * * *' || github.event_name == 'workflow_dispatch'
         env:
           TIKTOK_PROFILE_ID:   ${{ secrets.TIKTOK_PROFILE_ID }}
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}

@@ -215,13 +215,13 @@ def get_ai_meta(raw_title: str) -> dict:
         return {"title": f"{raw_title[:60]} #shorts #viral", "hook": "WATCH THIS", "desc": f"{raw_title}\n\n#shorts #viral", "tags": ["shorts"]}
 
     prompt = (
-        f"Context: {raw_title}. Role: Viral YouTube Architect 2026.\n"
-        "Generate Interest-Graph Optimized JSON for Channel #2:\n"
-        "1. title: Curiosity-gap title + exactly 3 viral hashtags (under 100 chars).\n"
-        "2. hook: 3-word ALL CAPS visual hook.\n"
-        "3. desc: 3 lines of deep retention text + exactly 20 niche-viral hashtags.\n"
-        "4. tags: 10 viral tags.\n"
-        "Ensure JSON format only."
+        f"Context: {raw_title}. Role: Viral Movie Recap Architect 2026.\n"
+        "Generate Cinematic SEO JSON for 'Boltas Clips':\n"
+        "1. title: Deep, curiosity-driven movie recap title + 3 viral hashtags (e.g. #movieclips #cinema #recap).\n"
+        "2. hook: 3-word emotional/intense ALL CAPS hook (e.g. 'UNEXPECTED ENDING').\n"
+        "3. desc: 3 lines of intriguing story recap + exactly 20 movie-niche hashtags (#filmtok #movierecaps etc).\n"
+        "4. tags: 10 movie-related tags (e.g. MovieFacts, Cinema, Storyline, Recap).\n"
+        "Ensure output is ONLY valid JSON."
     )
     
     try:

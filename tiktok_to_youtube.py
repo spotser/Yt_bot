@@ -260,33 +260,14 @@ def get_ai_meta(raw_title: str) -> dict:
     except:
         return {"title": f"Viral Fact: {raw_title[:40]} #viral #shorts", "hook": "WAIT FOR IT", "desc": "#viral #shorts", "tags": ["shorts"]}
 
-def sanitize_meta(meta: dict) -> dict:
-    """Ensure AI output is YouTube-API safe."""
-    # desc must be string
-    d = meta.get("desc", "")
-    if isinstance(d, list): d = "\n".join(str(x) for x in d)
-    meta["desc"] = str(d)
-    
-    # title must be string
-    t = meta.get("title", "")
-    if isinstance(t, list): t = " ".join(str(x) for x in t)
-    meta["title"] = str(t)[:100]
-    
-    # tags must be list of strings
-    tags = meta.get("tags", [])
-    if isinstance(tags, str): tags = [t.strip() for t in tags.split(",")]
-    if not isinstance(tags, list): tags = [str(tags)]
-    meta["tags"] = [str(t).strip() for t in tags if t]
-    
-    # hook must be string
-    meta["hook"] = str(meta.get("hook", "WATCH THIS"))
-    return meta
+# ==========================================
+# UPLOAD ENGINE
+# ==========================================
 
 def upload_to_yt(youtube, path: Path, meta: dict):
     from googleapiclient.http import MediaFileUpload
-    meta = sanitize_meta(meta)
     body = {
-        "snippet": {"title": meta["title"], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
+        "snippet": {"title": meta["title"][:100], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
         "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}
     }
     media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)
@@ -295,7 +276,6 @@ def upload_to_yt(youtube, path: Path, meta: dict):
     while response is None:
         status, response = request.next_chunk()
     return response["id"]
-
 
 # ==========================================
 # MAIN EXECUTION (STABILITY PRO)

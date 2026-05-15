@@ -117,46 +117,29 @@ def is_duplicate_hash(file_hash: str) -> bool:
     return file_hash in HASH_HISTORY.read_text(encoding="utf-8")
 
 # ==========================================
-# CORE: FETCH VIDEOS (SEARCH-BASED)
+# CORE: FETCH FROM PROFILE
 # ==========================================
 
-# CH2 uses search with profile name + niche keywords
-# TikWM /user/posts is Cloudflare blocked, /feed/search works
-SEARCH_KEYWORDS_CH2 = os.environ.get("SEARCH_KEYWORDS_CH2", "").strip()
-
-def fetch_videos() -> list[dict]:
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+def fetch_profile_videos() -> list[dict]:
+    if not TIKTOK_PROFILE_ID:
+        log("No TIKTOK_PROFILE_ID set in secrets.", "ERR"); return []
     
-    # Build keyword list from profile + custom keywords
-    profile = TIKTOK_PROFILE_ID.replace("@", "").strip() if TIKTOK_PROFILE_ID else ""
-    custom = SEARCH_KEYWORDS_CH2 if SEARCH_KEYWORDS_CH2 else "hollywood hindi movie recap, movie clips hindi dubbed, film recap hindi"
+    unique_id = TIKTOK_PROFILE_ID.replace("@", "")
+    log(f"Scanning profile: @{unique_id}", "STEP")
     
-    keywords = []
-    if profile:
-        keywords.append(profile)  # Profile name as keyword
-    keywords.extend([k.strip() for k in custom.split(",") if k.strip()])
-    random.shuffle(keywords)
-    
-    for kw in keywords:
-        log(f"Searching: '{kw}'", "STEP")
-        try:
-            params = {"keywords": kw, "count": 20, "hd": 1}
-            resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
-            data = resp.json()
-            if data.get("code") == 0:
-                videos = data.get("data", {}).get("videos", [])
-                filtered = [v for v in videos if 10 <= v.get("duration", 0) <= 59]
-                if filtered:
-                    log(f"Found {len(filtered)} videos for '{kw}'", "INFO")
-                    return filtered
-        except Exception as e:
-            log(f"Search error for '{kw}': {e}", "ERR")
-            continue
-    
-    log("No videos found across all keywords.", "WARN")
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        # TikWM User Posts API
+        params = {"unique_id": f"@{unique_id}", "count": 20}
+        resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+        data = resp.json()
+        if data.get("code") == 0:
+            videos = data.get("data", {}).get("videos", [])
+            # Filter for vertical, short, quality
+            return [v for v in videos if 10 <= v.get("duration", 0) <= 59]
+    except Exception as e:
+        log(f"Profile fetch error: {e}", "ERR")
     return []
-
-
 
 def download_video(v: dict) -> Path | None:
     vid_id = str(v.get("video_id", v.get("id")))
@@ -256,29 +239,10 @@ def get_ai_meta(raw_title: str) -> dict:
 # UPLOAD ENGINE
 # ==========================================
 
-def sanitize_meta(meta: dict) -> dict:
-    """Ensure AI output is YouTube-API safe."""
-    d = meta.get("desc", "")
-    if isinstance(d, list): d = "\n".join(str(x) for x in d)
-    meta["desc"] = str(d)
-    
-    t = meta.get("title", "")
-    if isinstance(t, list): t = " ".join(str(x) for x in t)
-    meta["title"] = str(t)[:100]
-    
-    tags = meta.get("tags", [])
-    if isinstance(tags, str): tags = [t.strip() for t in tags.split(",")]
-    if not isinstance(tags, list): tags = [str(tags)]
-    meta["tags"] = [str(t).strip() for t in tags if t]
-    
-    meta["hook"] = str(meta.get("hook", "WATCH THIS"))
-    return meta
-
 def upload_to_yt(youtube, path: Path, meta: dict):
     from googleapiclient.http import MediaFileUpload
-    meta = sanitize_meta(meta)
     body = {
-        "snippet": {"title": meta["title"], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
+        "snippet": {"title": meta["title"][:100], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
         "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}
     }
     media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)
@@ -287,7 +251,6 @@ def upload_to_yt(youtube, path: Path, meta: dict):
     while response is None:
         status, response = request.next_chunk()
     return response["id"]
-
 
 # ==========================================
 # MAIN EXECUTION (CH2)
@@ -314,8 +277,8 @@ def main():
         history_ids = load_history()
         
         # 1. Fetch
-        videos = fetch_videos()
-        if not videos: log("No content found.", "INFO"); return
+        videos = fetch_profile_videos()
+        if not videos: log("No profile content found.", "INFO"); return
         
         # 2. Pick New
         target = None

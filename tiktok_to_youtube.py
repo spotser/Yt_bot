@@ -423,9 +423,13 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         if os.path.exists(f):
             font_path = f
             break
-    font_path_fixed = font_path.replace('\\', '/')
-    font_opt = f"fontfile='{font_path_fixed}'" if font_path else ""
-    font_config = f"{font_opt}:" if font_opt else ""
+    
+    if not font_path:
+        log("No system fonts found. Falling back to default FFmpeg font.", "WARN")
+        font_config = ""
+    else:
+        font_path_fixed = font_path.replace('\\', '/')
+        font_config = f"fontfile='{font_path_fixed}':"
 
     # Safe text for FFmpeg
     safe_text = escape_ffmpeg_text(hook_text)
@@ -474,8 +478,9 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"noise=c0s=2:c0f=t+u",                                                 # Layer 8: Film Grain
         f"unsharp=5:5:0.8:5:5:0.0",                                             # Layer 9: Sharpening
         f"fps={d['fps']}",                                                      # Layer 10: FPS Manipulation
-        thumb_hook,                                                             # Layer 11a: Overlay Hook
-        watermark                                                               # Layer 11b: Watermark
+        thumb_hook,                                                             # Layer 11a: Overlay Hook (Thumb)
+        watermark,                                                              # Layer 11b: Watermark
+        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"   # Final Layer: Enforce final aspect
     ]
     
     vf = ",".join(v_filters)
@@ -518,16 +523,27 @@ def upload_to_youtube(youtube, video_path: Path, title: str, description: str, t
     media = MediaFileUpload(str(video_path), mimetype="video/mp4", resumable=True, chunksize=1024*1024*5)
     
     log(f"Uploading to YouTube: {title[:50]}...", "STEP")
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"  ⏳ Upload Progress: {int(status.progress() * 100)}%", end="\r")
+    # Retry logic for upload
+    for attempt in range(3):
+        try:
+            request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+            response = None
+            while response is None:
+                status, response = request.next_chunk()
+                if status:
+                    print(f"  ⏳ Upload Progress: {int(status.progress() * 100)}%", end="\r")
             
-    log(f"Upload Complete! ID: {response['id']}")
-    return response["id"]
+            log(f"Upload Complete! ID: {response['id']}")
+            return response["id"]
+        except Exception as e:
+            if "quotaExceeded" in str(e):
+                log("CRITICAL: YouTube API Quota Exceeded for today.", "ERR")
+                return None
+            log(f"Upload attempt {attempt+1} failed: {e}", "WARN")
+            if attempt < 2: time.sleep(5)
+            else: raise e
+    return None
 
 # ==========================================
 # AI ENHANCEMENTS (GROQ)
@@ -539,19 +555,17 @@ def generate_ai_metadata(original_title: str) -> str:
         
     log("Generating AI Metadata using Groq...", "STEP")
     prompt = (
-        f"You are a World-Class YouTube Shorts SEO Strategist specializing in VIRAL growth.\n"
+        f"You are a YouTube Shorts Growth Expert. Target Audience: Stoicism/Psychology.\n"
         f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
         f"Video Topic: {original_title}\n\n"
-        f"Generate an ULTRA-PREMIUM metadata package designed for 1M+ views.\n"
-        f"1. TITLE: Max 90 chars. Use 'The [Mental Trap/Secret]' style. MUST end with exactly 3 viral hashtags (e.g., #stoic #psychology #mindset).\n"
-        f"2. HOOK: 2-4 powerful words in ALL CAPS (e.g., 'DON'T BE WEAK', 'THE COLD TRUTH'). This is for on-screen text.\n"
-        f"3. DESCRIPTION: \n"
-        f"   - Line 1: A shocking or deep statement that hooks the reader.\n"
-        f"   - Paragraph: 2-3 sentences of 'Ultra-Pro' value-driven commentary about the video's theme.\n"
-        f"   - CTA: A strong call to action (e.g., 'Double tap if you agree & Subscribe for more psychological secrets 🏛️').\n"
-        f"   - Hashtags: Exactly 20 viral, niche-relevant hashtags (e.g. #shorts #viral #sigma...).\n"
-        f"4. TAGS: 15 high-volume SEO keywords separated by commas.\n\n"
-        f"IMPORTANT: NO generic text. Make it feel elite, stoic, and psychological. Ensure the JSON is valid.\n"
+        f"Generate an ULTRA-PERFECT SEO metadata package:\n"
+        f"1. TITLE: Exactly 70 characters. The first 40-45 chars should be a curiosity-driven hook. The last 25-30 chars must be 3-4 viral hashtags (e.g. #mindset #stoic #wisdom).\n"
+        f"2. HOOK: 2-3 words in ALL CAPS for the on-screen text (e.g., 'STAY COLD').\n"
+        f"3. DESCRIPTION: Exactly 8-10 lines of high-value, deep psychological commentary. \n"
+        f"   - Include a Call to Action (CTA) like 'Subscribe for daily wisdom'.\n"
+        f"   - Followed by a block of 25-30 trending hashtags relevant to the niche.\n"
+        f"4. TAGS: 15-20 perfect SEO tags for maximum reach.\n\n"
+        f"IMPORTANT: Ensure the title is exactly 70 characters. No repetition. Valid JSON ONLY.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -614,11 +628,13 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     
     clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
     
-    # 3. Dynamic Description & 20 Tags
-    trending_20 = (
+    # 3. Dynamic Description (8-10 Lines) & 25-30 Hashtags
+    trending_30 = (
         "#stoicism #psychology #mindset #wisdom #mentalstrength #stoicquotes "
         "#humanbehavior #darkpsychology #growth #selfimprovement #discipline "
-        "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks #success #mentalhealth"
+        "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks "
+        "#success #mentalhealth #sigma #stoicmindset #psychologyfacts #mindsetmatters "
+        "#ancientwisdom #discipline #focus #power #control #mindsetshift"
     )
     
     desc_templates = [
@@ -640,14 +656,17 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     
     chosen_desc, chosen_tags = random.choice(desc_templates)
     
-    # Ensure description is "Badhiya" (Ultra-Pro)
+    # Ensure description is "Badhiya" (8-10 Lines + 30 Hashtags)
     premium_desc = (
-        f"🏛️ {chosen_desc.split('.')[0]}.\n\n"
-        f"Master your mind before it masters you. We dive deep into the psychology of stoicism "
-        f"to help you build an unbreakable spirit and a focused life.\n\n"
+        f"🏛️ {chosen_desc.split('.')[0]}.\n"
+        f"Master your mind before it masters you.\n"
+        f"Ancient wisdom meets modern psychology to build an unbreakable spirit.\n"
+        f"Stop letting external factors control your inner peace.\n"
+        f"Become the master of your emotions and your destiny.\n"
+        f"Focus on what you can control, and ignore the rest.\n"
         f"🚀 Join the tribe of the mentally strong.\n"
         f"✅ Subscribe for Daily Wisdom & Psychology Secrets.\n\n"
-        f"{trending_20}"
+        f"{trending_30}"
     )
     
     return {

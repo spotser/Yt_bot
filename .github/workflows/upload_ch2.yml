@@ -1,4 +1,4 @@
-name: Aura Engine - Channel #2 (Boltas Clips)
+name: "[CH2] BOLTAS CLIPS BOT"
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  upload:
+  Upload-CH2:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

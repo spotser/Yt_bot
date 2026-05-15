@@ -1,4 +1,4 @@
-name: Aura Engine - Channel #1 (Global)
+name: "[CH1] GLOBAL VIRAL BOT"
 
 on:
   schedule:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  upload:
+  Upload-CH1:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

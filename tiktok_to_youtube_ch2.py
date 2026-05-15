@@ -191,7 +191,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
     )
     
-    cmd = f'ffmpeg -y -i "{input_path}" -vf "{vf}" -af "asetrate=44100*{d['pitch']},atempo={d['pts']}/{d['pitch']},aresample=44100" -c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k "{output_path}"'
+    cmd = f'ffmpeg -y -i "{input_path}" -vf "{vf}" -af "asetrate=44100*{d["pitch"]},atempo={d["pts"]}/{d["pitch"]},aresample=44100" -c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k "{output_path}"'
     try:
         run_cmd(cmd)
         return output_path

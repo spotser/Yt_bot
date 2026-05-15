@@ -124,13 +124,17 @@ def fetch_profile_videos() -> list[dict]:
     if not TIKTOK_PROFILE_ID:
         log("No TIKTOK_PROFILE_ID set in secrets.", "ERR"); return []
     
-    unique_id = TIKTOK_PROFILE_ID.replace("@", "")
-    log(f"Scanning profile: @{unique_id}", "STEP")
+    # Clean unique_id: Remove '@' if present
+    clean_id = TIKTOK_PROFILE_ID.strip().lstrip('@')
+    log(f"Scanning profile: {clean_id}", "STEP")
     
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Accept": "application/json"
+    }
     try:
-        # TikWM User Posts API
-        params = {"unique_id": f"@{unique_id}", "count": 20}
+        # TikWM User Posts API - No '@' in unique_id
+        params = {"unique_id": clean_id, "count": 20}
         resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
         
         if resp.status_code != 200:

@@ -39,6 +39,8 @@ GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
 DRIVE_FOLDER_URL = os.environ.get("DRIVE_FOLDER_URL", "").strip()
 WATERMARK_TEXT   = os.environ.get("WATERMARK_TEXT", "@VIRALITY").strip()
 TIKTOK_PROFILE_ID = os.environ.get("TIKTOK_PROFILE_ID", "").strip()
+STRICT_PROFILE    = os.environ.get("STRICT_PROFILE_ONLY", "false").lower() == "true"
+CHANNEL_NICHE     = os.environ.get("CHANNEL_NICHE", "stoicism").lower()
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -191,20 +193,24 @@ def fetch_videos() -> list[dict]:
             # TikWM User Posts Endpoint
             params = {"unique_id": profile_id, "count": 20, "cursor": 0}
             resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
-            data = resp.json()
             
-            if data.get("code") == 0:
-                posts = data.get("data", {}).get("videos", [])
-                log(f"Found {len(posts)} videos on profile '{TIKTOK_PROFILE_ID}'.")
-                # Add to pool (will be filtered later)
-                all_videos.extend(posts)
+            if resp.status_code != 200 or not resp.text.strip():
+                log(f"TikWM API returned empty or error status: {resp.status_code}", "ERR")
             else:
-                log(f"Profile Fetch Error: {data.get('msg')}", "ERR")
+                data = resp.json()
+                if data.get("code") == 0:
+                    posts = data.get("data", {}).get("videos", [])
+                    log(f"Found {len(posts)} videos on profile '{profile_id}'.")
+                    all_videos.extend(posts)
+                else:
+                    log(f"Profile Fetch Error: {data.get('msg')}", "ERR")
         except Exception as e:
             log(f"Profile fetch failed: {e}", "ERR")
 
     # --- MODE 2: Keyword Search (Fallback or Main) ---
-    if not all_videos:
+    # Only run search if profile didn't give enough or if profile isn't set
+    # AND if STRICT_PROFILE is not enabled
+    if not all_videos and not STRICT_PROFILE:
         keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
         
         # --- SMART KEYWORD EXPANSION ---
@@ -568,19 +574,32 @@ def generate_ai_metadata(original_title: str) -> str:
     if not GROQ_API_KEY:
         return None
         
-    log("Generating AI Metadata using Groq...", "STEP")
+    log(f"Generating AI Metadata for niche '{CHANNEL_NICHE}' using Groq...", "STEP")
+    
+    # Dynamic Niche Instructions
+    if "movie" in CHANNEL_NICHE or "hindi" in CHANNEL_NICHE:
+        niche_focus = (
+            "Niche: Hollywood Movie Explanation/Fact in HINDI. Target: Indian Audience.\n"
+            "TONE: Exciting, Mysterious, Knowledgeable.\n"
+            "TITLE: Must be in Hinglish (Hindi written in English alphabet) with a huge curiosity hook. Example: 'Inception ka ye secret koi nahi janta! 😱 #movies #facts'.\n"
+            "DESCRIPTION: 8-10 lines of Hindi explanation about the movie scene, using 'Wow' factors.\n"
+            "TAGS: Bollywood, Hollywood, MovieFacts, Cinematic, HindiExplanation."
+        )
+    else:
+        niche_focus = "Niche: Stoicism/Psychology. TONE: Deep, Calm, Stoic."
+
     prompt = (
-        f"You are a YouTube Shorts Growth Expert. Target Audience: Stoicism/Psychology.\n"
+        f"You are a YouTube Shorts Growth Expert. {niche_focus}\n"
         f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
         f"Video Topic: {original_title}\n\n"
         f"Generate an ULTRA-PERFECT SEO metadata package:\n"
-        f"1. TITLE: Exactly 70 characters. The first 40-45 chars should be a curiosity-driven hook. The last 25-30 chars must be 3-4 viral hashtags (e.g. #mindset #stoic #wisdom).\n"
-        f"2. HOOK: 2-3 words in ALL CAPS for the on-screen text (e.g., 'STAY COLD').\n"
-        f"3. DESCRIPTION: Exactly 8-10 lines of high-value, deep psychological commentary. \n"
-        f"   - Include a Call to Action (CTA) like 'Subscribe for daily wisdom'.\n"
-        f"   - Followed by a block of 25-30 trending hashtags relevant to the niche.\n"
-        f"4. TAGS: 15-20 perfect SEO tags for maximum reach.\n\n"
-        f"IMPORTANT: Ensure the title is exactly 70 characters. No repetition. Valid JSON ONLY.\n"
+        f"1. TITLE: Exactly 70 characters. First 45 chars: Curiosity Hook. Last 25 chars: 3 Viral Hashtags.\n"
+        f"2. HOOK: 2-3 words in ALL CAPS (On-screen text).\n"
+        f"3. DESCRIPTION: Exactly 8-10 lines of high-value commentary.\n"
+        f"   - Include CTA: 'Subscribe for daily movie facts'.\n"
+        f"   - 25-30 trending hashtags.\n"
+        f"4. TAGS: 15-20 perfect SEO tags.\n\n"
+        f"IMPORTANT: Ensure the title is exactly 70 characters. Valid JSON ONLY.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     

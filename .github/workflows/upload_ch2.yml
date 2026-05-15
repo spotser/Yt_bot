@@ -2,10 +2,8 @@ name: TikTok → YouTube Shorts (Channel 2)
 
 on:
   schedule:
-    - cron: "30 2 * * *"    # 08:00 AM IST
-    - cron: "30 8 * * *"    # 02:00 PM IST
-    - cron: "30 14 * * *"   # 08:00 PM IST
-    - cron: "30 20 * * *"   # 01:30 AM IST
+    - cron: "00 03 * * *"    # 08:30 AM IST (India Morning Peak)
+    - cron: "00 15 * * *"    # 08:30 PM IST (India Evening Peak)
   workflow_dispatch:         # Manual run button
 
 jobs:
@@ -40,6 +38,8 @@ jobs:
           DRIVE_FOLDER_URL:    ${{ secrets.DRIVE_FOLDER_URL_CH2 }}
           WATERMARK_TEXT:      ${{ secrets.WATERMARK_TEXT_CH2 || '@VIRALITY' }}
           TIKTOK_PROFILE_ID:   ${{ secrets.TIKTOK_PROFILE_ID }}
+          STRICT_PROFILE_ONLY: "true"
+          CHANNEL_NICHE:       "hindi_movie_narration"
           YT_PRIVACY:          public
           YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"

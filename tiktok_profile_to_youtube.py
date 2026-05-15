@@ -121,36 +121,24 @@ def is_duplicate_hash(file_hash: str) -> bool:
 # ==========================================
 
 def fetch_profile_videos() -> list[dict]:
-    # Use Search API instead of Profile API to bypass 403 blocks
-    search_query = f"@{TIKTOK_PROFILE_ID.strip().lstrip('@')}"
-    log(f"Scanning profile: {search_query}", "STEP")
+    if not TIKTOK_PROFILE_ID:
+        log("No TIKTOK_PROFILE_ID set in secrets.", "ERR"); return []
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
+    unique_id = TIKTOK_PROFILE_ID.replace("@", "")
+    log(f"Scanning profile: @{unique_id}", "STEP")
+    
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        # TikWM Search API (bypasses profile blocks)
-        params = {"keywords": search_query, "count": 20, "hd": 1}
-        resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
-        
-        if resp.status_code != 200:
-            log(f"TikWM API Error ({resp.status_code}).", "ERR")
-            return []
-            
-        try:
-            data = resp.json()
-        except:
-            log(f"API returned non-JSON response.", "ERR")
-            return []
-
+        # TikWM User Posts API
+        params = {"unique_id": f"@{unique_id}", "count": 20}
+        resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+        data = resp.json()
         if data.get("code") == 0:
             videos = data.get("data", {}).get("videos", [])
+            # Filter for vertical, short, quality
             return [v for v in videos if 10 <= v.get("duration", 0) <= 59]
-        else:
-            log(f"TikWM Message: {data.get('msg', 'Unknown Error')}", "WARN")
     except Exception as e:
-        log(f"Profile fetch exception: {e}", "ERR")
+        log(f"Profile fetch error: {e}", "ERR")
     return []
 
 def download_video(v: dict) -> Path | None:
@@ -216,9 +204,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     try:
         run_cmd(cmd)
         return output_path
-    except Exception as e:
-        log(f"FFmpeg Error: {e}", "ERR")
-        return None
+    except: return None
 
 # ==========================================
 # SEO 2026: INTEREST-GRAPH PRO
@@ -255,23 +241,8 @@ def get_ai_meta(raw_title: str) -> dict:
 
 def upload_to_yt(youtube, path: Path, meta: dict):
     from googleapiclient.http import MediaFileUpload
-    
-    # Ensure description is a string
-    desc = meta.get("desc", "")
-    if isinstance(desc, list): desc = "\n".join(desc)
-    desc = desc[:5000] # YouTube limit
-    
-    # Ensure tags is a list
-    tags = meta.get("tags", ["shorts", "viral"])
-    if isinstance(tags, str): tags = [t.strip() for t in tags.split(",")]
-
     body = {
-        "snippet": {
-            "title": str(meta.get("title", "Viral Shorts"))[:100],
-            "description": desc,
-            "categoryId": CATEGORY,
-            "tags": tags
-        },
+        "snippet": {"title": meta["title"][:100], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
         "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}
     }
     media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)

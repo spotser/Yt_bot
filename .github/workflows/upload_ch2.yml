@@ -2,8 +2,8 @@ name: TikTok → YouTube Shorts (Channel 2)
 
 on:
   schedule:
-    - cron: "00 03 * * *"    # 08:30 AM IST (India Morning Peak)
-    - cron: "00 15 * * *"    # 08:30 PM IST (India Evening Peak)
+    - cron: "30 11 * * *"    # 05:00 PM IST (Evening Rush)
+    - cron: "30 14 * * *"    # 08:00 PM IST (Prime Time India)
   workflow_dispatch:         # Manual run button
 
 jobs:

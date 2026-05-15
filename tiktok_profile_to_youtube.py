@@ -117,65 +117,45 @@ def is_duplicate_hash(file_hash: str) -> bool:
     return file_hash in HASH_HISTORY.read_text(encoding="utf-8")
 
 # ==========================================
-# CORE: FETCH FROM PROFILE (2-STEP)
+# CORE: FETCH VIDEOS (SEARCH-BASED)
 # ==========================================
 
-def get_sec_uid(unique_id: str) -> str | None:
-    """Step 1: Get secUid from username via TikWM."""
-    headers = {"User-Agent": "Mozilla/5.0"}
-    clean_id = unique_id.replace("@", "")
-    log(f"Resolving secUid for: @{clean_id}", "STEP")
-    try:
-        resp = requests.get(
-            f"{TIKWM_API}/user/info",
-            params={"unique_id": clean_id},
-            headers=headers, timeout=30
-        )
-        data = resp.json()
-        if data.get("code") == 0:
-            sec_uid = data.get("data", {}).get("user", {}).get("secUid", "")
-            if not sec_uid:
-                sec_uid = data.get("data", {}).get("secUid", "")
-            if sec_uid:
-                log(f"secUid resolved: {sec_uid[:20]}...", "INFO")
-                return sec_uid
-        log(f"secUid not found. API response code: {data.get('code')}", "WARN")
-    except Exception as e:
-        log(f"secUid resolve error: {e}", "ERR")
-    return None
+# CH2 uses search with profile name + niche keywords
+# TikWM /user/posts is Cloudflare blocked, /feed/search works
+SEARCH_KEYWORDS_CH2 = os.environ.get("SEARCH_KEYWORDS_CH2", "").strip()
 
-def fetch_profile_videos() -> list[dict]:
-    if not TIKTOK_PROFILE_ID:
-        log("No TIKTOK_PROFILE_ID set in secrets.", "ERR"); return []
+def fetch_videos() -> list[dict]:
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
-    unique_id = TIKTOK_PROFILE_ID.replace("@", "")
-    log(f"Scanning profile: @{unique_id}", "STEP")
+    # Build keyword list from profile + custom keywords
+    profile = TIKTOK_PROFILE_ID.replace("@", "").strip() if TIKTOK_PROFILE_ID else ""
+    custom = SEARCH_KEYWORDS_CH2 if SEARCH_KEYWORDS_CH2 else "hollywood hindi movie recap, movie clips hindi dubbed, film recap hindi"
     
-    headers = {"User-Agent": "Mozilla/5.0"}
+    keywords = []
+    if profile:
+        keywords.append(profile)  # Profile name as keyword
+    keywords.extend([k.strip() for k in custom.split(",") if k.strip()])
+    random.shuffle(keywords)
     
-    # Step 1: Get secUid
-    sec_uid = get_sec_uid(unique_id)
-    if not sec_uid:
-        log("Cannot fetch posts without secUid.", "ERR"); return []
+    for kw in keywords:
+        log(f"Searching: '{kw}'", "STEP")
+        try:
+            params = {"keywords": kw, "count": 20, "hd": 1}
+            resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
+            data = resp.json()
+            if data.get("code") == 0:
+                videos = data.get("data", {}).get("videos", [])
+                filtered = [v for v in videos if 10 <= v.get("duration", 0) <= 59]
+                if filtered:
+                    log(f"Found {len(filtered)} videos for '{kw}'", "INFO")
+                    return filtered
+        except Exception as e:
+            log(f"Search error for '{kw}': {e}", "ERR")
+            continue
     
-    # Step 2: Fetch posts using secUid
-    try:
-        resp = requests.get(
-            f"{TIKWM_API}/user/posts",
-            params={"secUid": sec_uid, "count": 30},
-            headers=headers, timeout=30
-        )
-        data = resp.json()
-        if data.get("code") == 0:
-            videos = data.get("data", {}).get("videos", [])
-            filtered = [v for v in videos if 10 <= v.get("duration", 0) <= 59]
-            log(f"Found {len(filtered)} valid videos from profile.", "INFO")
-            return filtered
-        else:
-            log(f"Posts API returned code: {data.get('code')}, msg: {data.get('msg')}", "WARN")
-    except Exception as e:
-        log(f"Profile posts fetch error: {e}", "ERR")
+    log("No videos found across all keywords.", "WARN")
     return []
+
 
 
 def download_video(v: dict) -> Path | None:
@@ -334,8 +314,8 @@ def main():
         history_ids = load_history()
         
         # 1. Fetch
-        videos = fetch_profile_videos()
-        if not videos: log("No profile content found.", "INFO"); return
+        videos = fetch_videos()
+        if not videos: log("No content found.", "INFO"); return
         
         # 2. Pick New
         target = None

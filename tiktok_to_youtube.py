@@ -149,24 +149,42 @@ def is_duplicate_hash(file_hash: str) -> bool:
 # CORE: FETCH & DOWNLOAD
 # ==========================================
 
-def fetch_videos() -> list[dict]:
+def fetch_videos(history_ids: set) -> list[dict]:
     headers = {"User-Agent": "Mozilla/5.0"}
     keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
-    random.shuffle(keywords)
     
-    for kw in keywords:
+    # Global fallbacks to ensure "Har Hal Me VDO Mile"
+    fallbacks = ["stoic wisdom", "psychology facts", "human behavior", "life lessons", "philosophy quotes"]
+    
+    random.shuffle(keywords)
+    search_pool = keywords + fallbacks
+    
+    all_new_videos = []
+    
+    for kw in search_pool:
         log(f"Scanning for Viral Content: '{kw}'", "STEP")
         try:
-            params = {"keywords": kw, "count": 20, "hd": 1}
+            params = {"keywords": kw, "count": 50, "hd": 1}
             resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
             data = resp.json()
             if data.get("code") == 0:
                 videos = data.get("data", {}).get("videos", [])
-                # Filter for vertical, short, high-quality
-                filtered = [v for v in videos if 10 <= v.get("duration", 0) <= 59]
-                if filtered: return filtered
-        except: continue
-    return []
+                new_videos = [
+                    v for v in videos 
+                    if 10 <= v.get("duration", 0) <= 59 
+                    and str(v.get("id")) not in history_ids
+                ]
+                
+                if new_videos:
+                    log(f"Found {len(new_videos)} new potential videos for '{kw}'", "INFO")
+                    all_new_videos.extend(new_videos)
+                    # We found something, so we can stop searching more keywords to save time/API
+                    break 
+        except Exception as e:
+            log(f"Search error for '{kw}': {e}", "WARN")
+            continue
+            
+    return all_new_videos
 
 def download_video(v: dict) -> Path | None:
     vid_id = str(v.get("video_id", v.get("id")))
@@ -305,57 +323,59 @@ def main():
         history_ids, _ = load_history()
         
         # 1. Fetch with Multi-Keyword Resilience
-        videos = fetch_videos()
+        videos = fetch_videos(history_ids)
         if not videos:
-            log("No new content found across all keywords. Task Finished.", "INFO")
-            return # Exit 0
+            log("CRITICAL: No new content found across ALL keywords.", "ERR")
+            return
         
-        # 2. Pick One New Video
-        target = None
-        for v in videos:
-            v_id = str(v.get("id"))
-            if v_id not in history_ids:
-                target = v
-                break
+        # 2. Shuffle candidates and try them one by one until success
+        random.shuffle(videos)
+        log(f"Candidate pool size: {len(videos)}. Attempting processing...", "INFO")
         
-        if not target:
-            log("All found videos are already in history. Task Finished.", "INFO")
-            return # Exit 0
-        
-        # 3. Process with Error Isolation
-        v_file, p_file = None, None
-        try:
-            v_file = download_video(target)
-            if not v_file:
-                log("Download failed.", "ERR")
-                return
-            
-            f_hash = get_file_hash(v_file)
-            if is_duplicate_hash(f_hash):
-                log("Hash Collision - Skipping duplicate content.", "WARN")
-                return
+        success = False
+        for target in videos:
+            v_id = str(target.get("id"))
+            v_file, p_file = None, None
+            try:
+                log(f"Processing candidate: {v_id}", "STEP")
+                v_file = download_video(target)
+                if not v_file:
+                    log(f"Download failed for {v_id}, trying next...", "WARN")
+                    continue
                 
-            meta = get_ai_meta(target.get("title", "New Short"))
-            log(f"SEO PRO Generated: {meta['title'][:40]}...", "SEO")
-            
-            p_file = process_video(v_file, meta["hook"])
-            if not p_file:
-                log("FFmpeg Processing failed.", "ERR")
-                return
-            
-            # 4. Upload
-            yt_id = upload_to_yt(youtube, p_file, meta)
-            save_history(str(target.get("id")), yt_id, meta["title"], f_hash)
-            log(f"SUCCESS: https://youtu.be/{yt_id}")
-            
-        except Exception as e:
-            log(f"Internal Pipeline Error: {e}", "ERR")
-        finally:
-            # Absolute Cleanup
-            for f in [v_file, p_file]:
-                if f and f.exists():
-                    try: f.unlink()
-                    except: pass
+                f_hash = get_file_hash(v_file)
+                if is_duplicate_hash(f_hash):
+                    log(f"Hash Collision for {v_id} - Skipping duplicate content.", "WARN")
+                    v_file.unlink()
+                    continue
+                    
+                meta = get_ai_meta(target.get("title", "New Short"))
+                log(f"SEO PRO Generated: {meta['title'][:40]}...", "SEO")
+                
+                p_file = process_video(v_file, meta["hook"])
+                if not p_file:
+                    log(f"FFmpeg Processing failed for {v_id}, trying next...", "WARN")
+                    continue
+                
+                # 4. Upload
+                yt_id = upload_to_yt(youtube, p_file, meta)
+                save_history(v_id, yt_id, meta["title"], f_hash)
+                log(f"SUCCESS: https://youtu.be/{yt_id}")
+                success = True
+                break # Exit the candidate loop on success
+                
+            except Exception as e:
+                log(f"Candidate Error ({v_id}): {e}", "ERR")
+                continue
+            finally:
+                # Cleanup files for this candidate
+                for f in [v_file, p_file]:
+                    if f and f.exists():
+                        try: f.unlink()
+                        except: pass
+        
+        if not success:
+            log("CRITICAL: Failed to process any video from the candidate pool.", "ERR")
             
     except Exception as e:
         log(f"CRITICAL SYSTEM ERROR: {e}", "ERR")

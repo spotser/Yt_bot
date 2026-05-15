@@ -132,13 +132,24 @@ def fetch_profile_videos() -> list[dict]:
         # TikWM User Posts API
         params = {"unique_id": f"@{unique_id}", "count": 20}
         resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
-        data = resp.json()
+        
+        if resp.status_code != 200:
+            log(f"TikWM API Error ({resp.status_code}). Check Profile ID.", "ERR")
+            return []
+            
+        try:
+            data = resp.json()
+        except:
+            log(f"API returned non-JSON response. TikTok might be blocking or Profile ID is invalid.", "ERR")
+            return []
+
         if data.get("code") == 0:
             videos = data.get("data", {}).get("videos", [])
-            # Filter for vertical, short, quality
             return [v for v in videos if 10 <= v.get("duration", 0) <= 59]
+        else:
+            log(f"TikWM Message: {data.get('msg', 'Unknown Error')}", "WARN")
     except Exception as e:
-        log(f"Profile fetch error: {e}", "ERR")
+        log(f"Profile fetch exception: {e}", "ERR")
     return []
 
 def download_video(v: dict) -> Path | None:

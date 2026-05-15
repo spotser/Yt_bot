@@ -21,9 +21,6 @@ jobs:
       - name: Install Dependencies
         run: pip install requests google-auth google-auth-oauthlib google-api-python-client
 
-      - name: Install FFmpeg & Fonts
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
-
       - name: Run Channel #2 (Boltas Clips)
         env:
           TIKTOK_PROFILE_ID:   ${{ secrets.TIKTOK_PROFILE_ID }}

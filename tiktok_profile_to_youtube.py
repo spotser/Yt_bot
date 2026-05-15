@@ -121,30 +121,27 @@ def is_duplicate_hash(file_hash: str) -> bool:
 # ==========================================
 
 def fetch_profile_videos() -> list[dict]:
-    if not TIKTOK_PROFILE_ID:
-        log("No TIKTOK_PROFILE_ID set in secrets.", "ERR"); return []
-    
-    # Clean unique_id: Remove '@' if present
-    clean_id = TIKTOK_PROFILE_ID.strip().lstrip('@')
-    log(f"Scanning profile: {clean_id}", "STEP")
+    # Use Search API instead of Profile API to bypass 403 blocks
+    search_query = f"@{TIKTOK_PROFILE_ID.strip().lstrip('@')}"
+    log(f"Scanning profile: {search_query}", "STEP")
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
     try:
-        # TikWM User Posts API - No '@' in unique_id
-        params = {"unique_id": clean_id, "count": 20}
-        resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+        # TikWM Search API (bypasses profile blocks)
+        params = {"keywords": search_query, "count": 20, "hd": 1}
+        resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
         
         if resp.status_code != 200:
-            log(f"TikWM API Error ({resp.status_code}). Check Profile ID.", "ERR")
+            log(f"TikWM API Error ({resp.status_code}).", "ERR")
             return []
             
         try:
             data = resp.json()
         except:
-            log(f"API returned non-JSON response. TikTok might be blocking or Profile ID is invalid.", "ERR")
+            log(f"API returned non-JSON response.", "ERR")
             return []
 
         if data.get("code") == 0:
@@ -219,7 +216,9 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     try:
         run_cmd(cmd)
         return output_path
-    except: return None
+    except Exception as e:
+        log(f"FFmpeg Error: {e}", "ERR")
+        return None
 
 # ==========================================
 # SEO 2026: INTEREST-GRAPH PRO

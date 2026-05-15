@@ -229,7 +229,9 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     try:
         run_cmd(cmd)
         return output_path
-    except: return None
+    except Exception as e:
+        log(f"FFmpeg Error: {e}", "ERR")
+        return None
 
 # ==========================================
 # SEO 2026: INTEREST-GRAPH PRO

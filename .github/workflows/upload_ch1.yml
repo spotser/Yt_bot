@@ -23,6 +23,9 @@ jobs:
       - name: Install Dependencies
         run: pip install requests google-auth google-auth-oauthlib google-api-python-client
 
+      - name: Install FFmpeg & Fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
       - name: Run Channel #1
         env:
           SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS }}

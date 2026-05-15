@@ -252,13 +252,20 @@ def main():
         log("No new videos found on profile.")
         return
 
-    vid_id = str(target.get("id"))
-    raw_caption = target.get("title", "Movie Fact")
-    v_file = download_video(target)
-    if not v_file: return
+    movie_tags = (
+        "\n\n#hollywoodhindi #moviefacts #hindiexplanation #cinemafacts #movies #hindi "
+        "#bollywood #movieexplained #factsinhindi #shorts #viral #trending #amazingfacts "
+        "#didyouknow #cinema #film #hollywood #bollywoodfacts #movieclips #storytelling"
+    )
     
-    meta_raw = generate_ai_metadata(raw_caption)
-    meta = json.loads(meta_raw) if meta_raw else {"title": raw_caption[:50], "hook": "Wait for it!", "description": "", "tags": []}
+    meta = {"title": raw_caption[:50], "hook": "Wait for it!", "description": "", "tags": []}
+    if meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+            if "#" not in meta.get("description", ""):
+                meta["description"] = meta.get("description", "") + movie_tags
+        except:
+            pass
     
     p_file = process_video(v_file, meta.get("hook", "WOW!"))
     if not p_file: return

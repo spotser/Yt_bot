@@ -599,10 +599,22 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             log(f"AI Metadata parsing failed: {e}", "WARN")
 
     if ai_meta:
+        # Ensure hashtags are present in description even if AI misses them
+        trending_30 = (
+            "\n\n#stoicism #psychology #mindset #wisdom #mentalstrength #stoicquotes "
+            "#humanbehavior #darkpsychology #growth #selfimprovement #discipline "
+            "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks "
+            "#success #mentalhealth #sigma #stoicmindset #psychologyfacts #mindsetmatters "
+            "#ancientwisdom #discipline #focus #power #control #mindsetshift"
+        )
+        final_desc = ai_meta.get("description", "")
+        if "#" not in final_desc:
+            final_desc += trending_30
+            
         return {
             "title": ai_meta.get("title", raw_caption[:50]),
             "hook": ai_meta.get("hook", "Wait for it! 😂"),
-            "description": ai_meta.get("description", ""),
+            "description": final_desc,
             "tags": ai_meta.get("tags", ["Shorts", "Viral"])
         }
     

@@ -110,55 +110,51 @@ def get_authenticated_service():
 # ==========================================
 
 def fetch_videos() -> list[dict]:
+    # Modern Browser Headers to bypass Cloudflare
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ]
+    
     headers = {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": random.choice(user_agents),
         "Accept": "application/json, text/plain, */*",
-        "Referer": "https://www.tikwm.com/"
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://www.tikwm.com",
+        "Referer": "https://www.tikwm.com/",
+        "Sec-CH-UA": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "X-Requested-With": "XMLHttpRequest"
     }
 
     profile_id = TIKTOK_PROFILE_ID.replace("@", "").strip()
-
     log(f"STRICT MODE: Fetching from Profile {profile_id}...", "STEP")
 
     try:
-        time.sleep(2)
-
-        params = {
-            "unique_id": profile_id,
-            "count": 20,
-            "cursor": 0
-        }
-
-        resp = requests.get(
-            f"{TIKWM_API}/user/posts",
-            params=params,
-            headers=headers,
-            timeout=30
-        )
-
-        print("FINAL URL:", resp.url)
-        print("STATUS:", resp.status_code)
-        print("RESPONSE:", resp.text[:500])
-
-        if "Just a moment" in resp.text or resp.status_code == 403:
-            log("Cloudflare blocked TikWM request.", "ERR")
-            return []
-
-        try:
-            data = resp.json()
-        except Exception:
-            log(f"Invalid JSON Response: {resp.text[:300]}", "ERR")
-            return []
-
-        if data.get("code") == 0:
-            posts = data.get("data", {}).get("videos", [])
-
-            log(f"Found {len(posts)} videos on profile.")
-
-            return posts
-
-        else:
-            log(f"TikWM API Error: {data}", "ERR")
+        # Retry with a different domain if blocked
+        for domain in ["www.tikwm.com", "tikwm.com"]:
+            time.sleep(random.uniform(2, 4))
+            params = {"unique_id": profile_id, "count": 20, "cursor": 0}
+            url = f"https://{domain}/api/user/posts"
+            
+            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            
+            print(f"TRYING DOMAIN: {domain}")
+            print("STATUS:", resp.status_code)
+            
+            if resp.status_code == 200 and "Just a moment" not in resp.text:
+                data = resp.json()
+                if data.get("code") == 0:
+                    posts = data.get("data", {}).get("videos", [])
+                    log(f"Found {len(posts)} videos on profile.")
+                    return posts
+            
+            log(f"Domain {domain} blocked or failed. Trying next...", "WARN")
 
     except Exception as e:
         log(f"Fetch failed: {e}", "ERR")

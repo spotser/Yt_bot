@@ -1,0 +1,54 @@
+name: TikTok → YouTube Shorts (Channel 2)
+
+on:
+  schedule:
+    - cron: "30 2 * * *"    # 08:00 AM IST
+    - cron: "30 8 * * *"    # 02:00 PM IST
+    - cron: "30 14 * * *"   # 08:00 PM IST
+    - cron: "30 20 * * *"   # 01:30 AM IST
+  workflow_dispatch:         # Manual run button
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # Necessary to push history update
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Install FFmpeg & Fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Run uploader
+        env:
+          SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS_CH2 || secrets.SEARCH_KEYWORDS }}
+          CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
+          TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64_CH2 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          DRIVE_FOLDER_URL:    ${{ secrets.DRIVE_FOLDER_URL_CH2 }}
+          WATERMARK_TEXT:      ${{ secrets.WATERMARK_TEXT_CH2 || '@VIRALITY' }}
+          TIKTOK_PROFILE_ID:   ${{ secrets.TIKTOK_PROFILE_ID }}
+          YT_PRIVACY:          public
+          YT_CATEGORY:         "24"
+          UPLOAD_OLDEST:       "false"
+          HISTORY_FILE:        "upload_history_ch2.txt"
+          HASH_HISTORY_FILE:   "hash_history_ch2.txt"
+        run: python tiktok_to_youtube.py
+
+      - name: Commit & Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update upload history CH2 [skip ci]"
+          file_pattern: 'upload_history_ch2.txt hash_history_ch2.txt'

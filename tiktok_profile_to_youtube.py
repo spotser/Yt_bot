@@ -117,8 +117,32 @@ def is_duplicate_hash(file_hash: str) -> bool:
     return file_hash in HASH_HISTORY.read_text(encoding="utf-8")
 
 # ==========================================
-# CORE: FETCH FROM PROFILE
+# CORE: FETCH FROM PROFILE (2-STEP)
 # ==========================================
+
+def get_sec_uid(unique_id: str) -> str | None:
+    """Step 1: Get secUid from username via TikWM."""
+    headers = {"User-Agent": "Mozilla/5.0"}
+    clean_id = unique_id.replace("@", "")
+    log(f"Resolving secUid for: @{clean_id}", "STEP")
+    try:
+        resp = requests.get(
+            f"{TIKWM_API}/user/info",
+            params={"unique_id": clean_id},
+            headers=headers, timeout=30
+        )
+        data = resp.json()
+        if data.get("code") == 0:
+            sec_uid = data.get("data", {}).get("user", {}).get("secUid", "")
+            if not sec_uid:
+                sec_uid = data.get("data", {}).get("secUid", "")
+            if sec_uid:
+                log(f"secUid resolved: {sec_uid[:20]}...", "INFO")
+                return sec_uid
+        log(f"secUid not found. API response code: {data.get('code')}", "WARN")
+    except Exception as e:
+        log(f"secUid resolve error: {e}", "ERR")
+    return None
 
 def fetch_profile_videos() -> list[dict]:
     if not TIKTOK_PROFILE_ID:
@@ -128,18 +152,31 @@ def fetch_profile_videos() -> list[dict]:
     log(f"Scanning profile: @{unique_id}", "STEP")
     
     headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # Step 1: Get secUid
+    sec_uid = get_sec_uid(unique_id)
+    if not sec_uid:
+        log("Cannot fetch posts without secUid.", "ERR"); return []
+    
+    # Step 2: Fetch posts using secUid
     try:
-        # TikWM User Posts API
-        params = {"unique_id": f"@{unique_id}", "count": 20}
-        resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
+        resp = requests.get(
+            f"{TIKWM_API}/user/posts",
+            params={"secUid": sec_uid, "count": 30},
+            headers=headers, timeout=30
+        )
         data = resp.json()
         if data.get("code") == 0:
             videos = data.get("data", {}).get("videos", [])
-            # Filter for vertical, short, quality
-            return [v for v in videos if 10 <= v.get("duration", 0) <= 59]
+            filtered = [v for v in videos if 10 <= v.get("duration", 0) <= 59]
+            log(f"Found {len(filtered)} valid videos from profile.", "INFO")
+            return filtered
+        else:
+            log(f"Posts API returned code: {data.get('code')}, msg: {data.get('msg')}", "WARN")
     except Exception as e:
-        log(f"Profile fetch error: {e}", "ERR")
+        log(f"Profile posts fetch error: {e}", "ERR")
     return []
+
 
 def download_video(v: dict) -> Path | None:
     vid_id = str(v.get("video_id", v.get("id")))
@@ -239,10 +276,29 @@ def get_ai_meta(raw_title: str) -> dict:
 # UPLOAD ENGINE
 # ==========================================
 
+def sanitize_meta(meta: dict) -> dict:
+    """Ensure AI output is YouTube-API safe."""
+    d = meta.get("desc", "")
+    if isinstance(d, list): d = "\n".join(str(x) for x in d)
+    meta["desc"] = str(d)
+    
+    t = meta.get("title", "")
+    if isinstance(t, list): t = " ".join(str(x) for x in t)
+    meta["title"] = str(t)[:100]
+    
+    tags = meta.get("tags", [])
+    if isinstance(tags, str): tags = [t.strip() for t in tags.split(",")]
+    if not isinstance(tags, list): tags = [str(tags)]
+    meta["tags"] = [str(t).strip() for t in tags if t]
+    
+    meta["hook"] = str(meta.get("hook", "WATCH THIS"))
+    return meta
+
 def upload_to_yt(youtube, path: Path, meta: dict):
     from googleapiclient.http import MediaFileUpload
+    meta = sanitize_meta(meta)
     body = {
-        "snippet": {"title": meta["title"][:100], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
+        "snippet": {"title": meta["title"], "description": meta["desc"], "categoryId": CATEGORY, "tags": meta["tags"]},
         "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}
     }
     media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)
@@ -251,6 +307,7 @@ def upload_to_yt(youtube, path: Path, meta: dict):
     while response is None:
         status, response = request.next_chunk()
     return response["id"]
+
 
 # ==========================================
 # MAIN EXECUTION (CH2)

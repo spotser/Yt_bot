@@ -599,22 +599,10 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             log(f"AI Metadata parsing failed: {e}", "WARN")
 
     if ai_meta:
-        # Ensure hashtags are present in description even if AI misses them
-        trending_30 = (
-            "\n\n#stoicism #psychology #mindset #wisdom #mentalstrength #stoicquotes "
-            "#humanbehavior #darkpsychology #growth #selfimprovement #discipline "
-            "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks "
-            "#success #mentalhealth #sigma #stoicmindset #psychologyfacts #mindsetmatters "
-            "#ancientwisdom #discipline #focus #power #control #mindsetshift"
-        )
-        final_desc = ai_meta.get("description", "")
-        if "#" not in final_desc:
-            final_desc += trending_30
-            
         return {
             "title": ai_meta.get("title", raw_caption[:50]),
             "hook": ai_meta.get("hook", "Wait for it! 😂"),
-            "description": final_desc,
+            "description": ai_meta.get("description", ""),
             "tags": ai_meta.get("tags", ["Shorts", "Viral"])
         }
     
@@ -654,14 +642,14 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             f"Control your mind, control your life. {clean_title}\n\n"
             f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
             f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n"
-            f"{trending_30}",
+            f"{trending_20}",
             ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes", "Viral", "Shorts"]
         ),
         (
             f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
             f"Deep dive into human behavior and ancient philosophy for a better you.\n"
             f"🔔 Subscribe for your daily dose of mental toughness!\n\n"
-            f"{trending_30}",
+            f"{trending_20}",
             ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom", "Viral", "Shorts"]
         )
     ]
@@ -693,6 +681,11 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 # ==========================================
 
 def main():
+    # Removed human-like delay as requested for instant execution
+    # delay = random.randint(5, 60)
+    # log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
+    # time.sleep(delay)
+
     validate_env()
     setup_dirs()
     write_secrets()

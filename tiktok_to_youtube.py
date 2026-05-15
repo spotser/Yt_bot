@@ -38,9 +38,6 @@ CATEGORY         = os.environ.get("YT_CATEGORY", "24") # 24 = Entertainment, 23 
 GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "").strip()
 DRIVE_FOLDER_URL = os.environ.get("DRIVE_FOLDER_URL", "").strip()
 WATERMARK_TEXT   = os.environ.get("WATERMARK_TEXT", "@VIRALITY").strip()
-TIKTOK_PROFILE_ID = os.environ.get("TIKTOK_PROFILE_ID", "").strip()
-STRICT_PROFILE    = os.environ.get("STRICT_PROFILE_ONLY", "false").lower() == "true"
-CHANNEL_NICHE     = os.environ.get("CHANNEL_NICHE", "stoicism").lower()
 
 TIKWM_API        = "https://www.tikwm.com/api"
 
@@ -48,8 +45,8 @@ TIKWM_API        = "https://www.tikwm.com/api"
 BASE_DIR      = Path("temp_work")
 DOWNLOAD_DIR  = BASE_DIR / "downloads"
 PROCESSED_DIR = BASE_DIR / "processed"
-HISTORY_FILE  = Path(os.environ.get("HISTORY_FILE", "upload_history.txt"))
-HASH_HISTORY  = Path(os.environ.get("HASH_HISTORY_FILE", "hash_history.txt"))
+HISTORY_FILE  = Path("upload_history.txt")
+HASH_HISTORY  = Path("hash_history.txt")
 TOKEN_PATH    = BASE_DIR / "token.pickle"
 SECRETS_PATH  = BASE_DIR / "client_secrets.json"
 
@@ -175,6 +172,7 @@ def is_duplicate_hash(file_hash: str) -> bool:
 # ==========================================
 
 def fetch_videos() -> list[dict]:
+    keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
     all_videos = []
     
     headers = {
@@ -184,99 +182,6 @@ def fetch_videos() -> list[dict]:
         "Accept-Language": "en-US,en;q=0.9"
     }
 
-    # --- MODE 1: Profile Fetching (Priority) ---
-    if TIKTOK_PROFILE_ID:
-        # Ensure ID starts with @ for TikWM
-        profile_id = TIKTOK_PROFILE_ID if TIKTOK_PROFILE_ID.startswith("@") else f"@{TIKTOK_PROFILE_ID}"
-        log(f"Fetching videos from TikTok Profile: {profile_id}...", "STEP")
-        try:
-            # TikWM User Posts Endpoint
-            params = {"unique_id": profile_id, "count": 20, "cursor": 0}
-            resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
-            
-            if resp.status_code != 200 or not resp.text.strip():
-                log(f"TikWM API returned empty or error status: {resp.status_code}", "ERR")
-            else:
-                data = resp.json()
-                if data.get("code") == 0:
-                    posts = data.get("data", {}).get("videos", [])
-                    log(f"Found {len(posts)} videos on profile '{profile_id}'.")
-                    all_videos.extend(posts)
-                else:
-                    log(f"Profile Fetch Error: {data.get('msg')}", "ERR")
-        except Exception as e:
-            log(f"Profile fetch failed: {e}", "ERR")
-
-    # --- MODE 2: Keyword Search (Fallback or Main) ---
-    # Strictly honor the STRICT_PROFILE flag
-    if STRICT_PROFILE:
-        if not all_videos:
-            log("STRICT MODE ENABLED: No videos found on profile. Skipping keyword search.", "WARN")
-            return []
-        else:
-            log(f"STRICT MODE ENABLED: Using {len(all_videos)} videos from profile only.", "INFO")
-    
-    # Only run search if profile didn't give anything AND strict mode is OFF
-    if not all_videos and not STRICT_PROFILE:
-        keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
-        
-        # --- SMART KEYWORD EXPANSION ---
-        final_keywords = [k for k in keywords]
-        if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
-            try:
-                log(f"Expanding {CHANNEL_NICHE} keywords with AI...", "STEP")
-                prompt = f"Given these keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral shorts. Return ONLY a comma-separated list of 3 keywords."
-                
-                resp = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.7
-                    },
-                    timeout=15
-                )
-                expansion = resp.json()["choices"][0]["message"]["content"].strip()
-                if expansion and "," in expansion:
-                    new_kws = [k.strip() for k in expansion.split(",") if k.strip()]
-                    log(f"AI suggested new niches: {new_kws}")
-                    final_keywords.extend(new_kws)
-            except Exception as e:
-                log(f"Expansion failed: {e}", "WARN")
-
-        for kw in final_keywords:
-            log(f"Searching for viral videos: '{kw}'...", "STEP")
-            for retry in range(3):
-                try:
-                    params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
-                    resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
-                    
-                    if "Just a moment" in resp.text or resp.status_code == 403:
-                        log(f"Cloudflare block detected (Attempt {retry+1}/3).", "WARN")
-                        time.sleep(1)
-                        continue
-                    break
-                except Exception as e:
-                    if retry == 2: raise e
-                    time.sleep(1)
-            
-            try:
-                data = resp.json()
-                if data.get("code") == 0:
-                    posts = data.get("data", {}).get("videos", [])
-                    log(f"Found {len(posts)} videos for '{kw}'.")
-                    all_videos.extend(posts)
-                else:
-                    log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
-            except Exception as e:
-                log(f"Search error for '{kw}': {e}", "ERR")
-
-    log(f"Total {len(all_videos)} videos pooled. Starting filtering...")
-    
-    # --- FILTERING ---
-    filtered_pool = []
-    
     # Comprehensive Filter List to ensure maximum copyright safety and faceless content
     SKIP_WORDS = [
         # News Channels & Brands
@@ -293,44 +198,111 @@ def fetch_videos() -> list[dict]:
         "follow for more", "link in bio", "subscribe", "buy now", "sale", "discount", "promo"
     ]
 
-    for p in all_videos:
-        # 1. Author/Niche Filtering
-        author_name = p.get("author", {}).get("nickname", "").lower()
-        author_id = p.get("author", {}).get("unique_id", "").lower()
-        if any(word in author_name or word in author_id for word in SKIP_WORDS):
-            continue
+    # --- SMART KEYWORD EXPANSION ---
+    final_keywords = [k for k in keywords]
+    if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
+        try:
+            log("Expanding comedy keywords with AI...", "STEP")
+            prompt = f"Given these comedy keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral comedy shorts (e.g. 'desi comedy', 'office fails'). Return ONLY a comma-separated list of 3 keywords."
             
-        # 2. Premium Content Filter (Resolution & Length)
-        duration = p.get("duration", 0)
-        width = p.get("width", 0)
-        height = p.get("height", 0)
-        
-        if duration < 10 or duration > 59: # 10s to 59s only for Shorts perfection
-            continue
-            
-        # Vertical check
-        if width > 0 and height > 0:
-            if height < width: continue
-        
-        # 4. Virality 2.0 (Calculate Engagement Score)
-        views = p.get("play_count", 0)
-        likes = p.get("digg_count", 0)
-        comments = p.get("comment_count", 0)
-        shares = p.get("share_count", 0)
-        
-        if views > 1000:
-            p["engagement_score"] = (likes + comments + shares) / views
-        else:
-            p["engagement_score"] = 0
-            
-        filtered_pool.append(p)
+            # Simple direct call to Groq for keyword expansion
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7
+                },
+                timeout=15
+            )
+            expansion = resp.json()["choices"][0]["message"]["content"].strip()
+            if expansion and "," in expansion:
+                new_kws = [k.strip() for k in expansion.split(",") if k.strip()]
+                log(f"AI suggested new niches: {new_kws}")
+                final_keywords.extend(new_kws)
+        except Exception as e:
+            log(f"Expansion failed: {e}", "WARN")
 
-    log(f"Filtered pool contains {len(filtered_pool)} videos.")
+    for kw in final_keywords:
+        log(f"Searching for viral videos: '{kw}'...", "STEP")
+        for retry in range(3):
+            try:
+                params = {"keywords": kw, "count": 20, "cursor": 0, "hd": 1}
+                resp = requests.get(f"{TIKWM_API}/feed/search", params=params, headers=headers, timeout=30)
+                
+                if "Just a moment" in resp.text or resp.status_code == 403:
+                    log(f"Cloudflare block detected (Attempt {retry+1}/3).", "WARN")
+                    time.sleep(1)
+                    continue
+                break
+            except Exception as e:
+                if retry == 2: raise e
+                time.sleep(1)
+        
+        try:
+            data = resp.json()
+            if data.get("code") == 0:
+                posts = data.get("data", {}).get("videos", [])
+                filtered = []
+                for p in posts:
+                    # 1. Author/Niche Filtering
+                    author_name = p.get("author", {}).get("nickname", "").lower()
+                    author_id = p.get("author", {}).get("unique_id", "").lower()
+                    if any(word in author_name or word in author_id for word in SKIP_WORDS):
+                        continue
+                        
+                    # 2. Premium Content Filter (Resolution & Length)
+                    duration = p.get("duration", 0)
+                    width = p.get("width", 0)
+                    height = p.get("height", 0)
+                    
+                    if duration < 10 or duration > 59: # 10s to 59s only for Shorts perfection
+                        # log(f"Skipping {p.get('id')}: Duration {duration}s", "DEBUG")
+                        continue
+                        
+                    # If width/height is missing, we check if it's likely vertical
+                    if width > 0 and height > 0:
+                        if height < width: # Horizontal video
+                            continue
+                    
+                    # 3. Recency Filter
+                    create_time = p.get("create_time", 0)
+                    if create_time:
+                        days_old = (time.time() - create_time) / (24 * 3600)
+                        if days_old > 10: # Increased to 10 days to find better quality
+                            continue
+                            
+                    # 4. Virality 2.0 (Calculate Engagement Score)
+                    views = p.get("play_count", 0)
+                    likes = p.get("digg_count", 0)
+                    comments = p.get("comment_count", 0)
+                    shares = p.get("share_count", 0)
+                    
+                    # Engagement Ratio (Avoid division by zero)
+                    if views > 1000:
+                        p["engagement_score"] = (likes + comments + shares) / views
+                    else:
+                        p["engagement_score"] = 0
+                        
+                    filtered.append(p)
+                
+                log(f"Found {len(posts)} videos for '{kw}' (Kept {len(filtered)} after Premium filtering).")
+                all_videos.extend(filtered)
+            else:
+                log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
+                
+            # Removed delay for faster execution as requested
+        except Exception as e:
+            log(f"Search error for '{kw}': {e}", "ERR")
+            
+    log(f"Total {len(all_videos)} videos pooled from all keywords.")
     
     # Sort by Virality 2.0 (Engagement Score)
-    filtered_pool.sort(key=lambda x: x.get("engagement_score", 0), reverse=True)
+    # This prioritizes videos that people are actually interacting with
+    all_videos.sort(key=lambda x: x.get("engagement_score", 0), reverse=True)
     
-    return filtered_pool
+    return all_videos
 
 # ==========================================
 # DRIVE SOURCING (AURA UPGRADE)
@@ -581,32 +553,19 @@ def generate_ai_metadata(original_title: str) -> str:
     if not GROQ_API_KEY:
         return None
         
-    log(f"Generating AI Metadata for niche '{CHANNEL_NICHE}' using Groq...", "STEP")
-    
-    # Dynamic Niche Instructions
-    if "movie" in CHANNEL_NICHE or "hindi" in CHANNEL_NICHE:
-        niche_focus = (
-            "Niche: Hollywood Movie Explanation/Fact in HINDI. Target: Indian Audience.\n"
-            "TONE: Exciting, Mysterious, Knowledgeable.\n"
-            "TITLE: Must be in Hinglish (Hindi written in English alphabet) with a huge curiosity hook. Example: 'Inception ka ye secret koi nahi janta! 😱 #movies #facts'.\n"
-            "DESCRIPTION: 8-10 lines of Hindi explanation about the movie scene, using 'Wow' factors.\n"
-            "TAGS: Bollywood, Hollywood, MovieFacts, Cinematic, HindiExplanation."
-        )
-    else:
-        niche_focus = "Niche: Stoicism/Psychology. TONE: Deep, Calm, Stoic."
-
+    log("Generating AI Metadata using Groq...", "STEP")
     prompt = (
-        f"You are a YouTube Shorts Growth Expert. {niche_focus}\n"
+        f"You are a YouTube Shorts Growth Expert. Target Audience: Stoicism/Psychology.\n"
         f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
         f"Video Topic: {original_title}\n\n"
         f"Generate an ULTRA-PERFECT SEO metadata package:\n"
-        f"1. TITLE: Exactly 70 characters. First 45 chars: Curiosity Hook. Last 25 chars: 3 Viral Hashtags.\n"
-        f"2. HOOK: 2-3 words in ALL CAPS (On-screen text).\n"
-        f"3. DESCRIPTION: Exactly 8-10 lines of high-value commentary.\n"
-        f"   - Include CTA: 'Subscribe for daily movie facts'.\n"
-        f"   - 25-30 trending hashtags.\n"
-        f"4. TAGS: 15-20 perfect SEO tags.\n\n"
-        f"IMPORTANT: Ensure the title is exactly 70 characters. Valid JSON ONLY.\n"
+        f"1. TITLE: Exactly 70 characters. The first 40-45 chars should be a curiosity-driven hook. The last 25-30 chars must be 3-4 viral hashtags (e.g. #mindset #stoic #wisdom).\n"
+        f"2. HOOK: 2-3 words in ALL CAPS for the on-screen text (e.g., 'STAY COLD').\n"
+        f"3. DESCRIPTION: Exactly 8-10 lines of high-value, deep psychological commentary. \n"
+        f"   - Include a Call to Action (CTA) like 'Subscribe for daily wisdom'.\n"
+        f"   - Followed by a block of 25-30 trending hashtags relevant to the niche.\n"
+        f"4. TAGS: 15-20 perfect SEO tags for maximum reach.\n\n"
+        f"IMPORTANT: Ensure the title is exactly 70 characters. No repetition. Valid JSON ONLY.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -683,14 +642,14 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             f"Control your mind, control your life. {clean_title}\n\n"
             f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
             f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n"
-            f"{trending_20}",
+            f"{trending_30}",
             ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes", "Viral", "Shorts"]
         ),
         (
             f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
             f"Deep dive into human behavior and ancient philosophy for a better you.\n"
             f"🔔 Subscribe for your daily dose of mental toughness!\n\n"
-            f"{trending_20}",
+            f"{trending_30}",
             ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom", "Viral", "Shorts"]
         )
     ]
@@ -722,11 +681,6 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 # ==========================================
 
 def main():
-    # Removed human-like delay as requested for instant execution
-    # delay = random.randint(5, 60)
-    # log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
-    # time.sleep(delay)
-
     validate_env()
     setup_dirs()
     write_secrets()

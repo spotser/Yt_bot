@@ -49,3 +49,4 @@ jobs:
         with:
           commit_message: "Update upload history [skip ci]"
           file_pattern: 'upload_history.txt hash_history.txt'
+          skip_dirty_check: true

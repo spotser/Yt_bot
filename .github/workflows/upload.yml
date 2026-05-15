@@ -37,7 +37,7 @@ jobs:
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
           TOKEN_PICKLE_B64:    ${{ secrets.TOKEN_PICKLE_B64 }}
           GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
-          DRIVE_FOLDER_URL:    ${{ secrets.DRIVE_FOLDER_URL }}
+          SYSTEM_LICENSE_KEY:  ${{ secrets.SYSTEM_LICENSE_KEY }}
           WATERMARK_TEXT:      ${{ secrets.WATERMARK_TEXT || '@VIRALITY' }}
           YT_PRIVACY:          public
           YT_CATEGORY:         "24"

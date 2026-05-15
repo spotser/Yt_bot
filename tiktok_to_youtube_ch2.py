@@ -111,32 +111,58 @@ def get_authenticated_service():
 
 def fetch_videos() -> list[dict]:
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0",
         "Accept": "application/json, text/plain, */*",
         "Referer": "https://www.tikwm.com/"
     }
-    
-    profile_id = TIKTOK_PROFILE_ID if TIKTOK_PROFILE_ID.startswith("@") else f"@{TIKTOK_PROFILE_ID}"
+
+    profile_id = TIKTOK_PROFILE_ID.replace("@", "").strip()
+
     log(f"STRICT MODE: Fetching from Profile {profile_id}...", "STEP")
-    
+
     try:
         time.sleep(2)
-        params = {"unique_id": profile_id, "count": 20, "cursor": 0}
-        resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
-        
-        if resp.status_code != 200 or not resp.text.strip():
-            log(f"TikWM Error {resp.status_code}: Profile may be private or API is down.", "ERR")
+
+        params = {
+            "unique_id": profile_id,
+            "count": 20,
+            "cursor": 0
+        }
+
+        resp = requests.get(
+            f"{TIKWM_API}/user/posts",
+            params=params,
+            headers=headers,
+            timeout=30
+        )
+
+        print("FINAL URL:", resp.url)
+        print("STATUS:", resp.status_code)
+        print("RESPONSE:", resp.text[:500])
+
+        if "Just a moment" in resp.text or resp.status_code == 403:
+            log("Cloudflare blocked TikWM request.", "ERR")
             return []
-            
-        data = resp.json()
+
+        try:
+            data = resp.json()
+        except Exception:
+            log(f"Invalid JSON Response: {resp.text[:300]}", "ERR")
+            return []
+
         if data.get("code") == 0:
             posts = data.get("data", {}).get("videos", [])
+
             log(f"Found {len(posts)} videos on profile.")
+
             return posts
+
         else:
-            log(f"TikWM Msg: {data.get('msg')}", "ERR")
+            log(f"TikWM API Error: {data}", "ERR")
+
     except Exception as e:
         log(f"Fetch failed: {e}", "ERR")
+
     return []
 
 def download_video(v: dict) -> Path | None:

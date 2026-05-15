@@ -8,6 +8,10 @@ on:
     - cron: "00 18 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: yt-upload
+  cancel-in-progress: false
+
 jobs:
   upload:
     runs-on: ubuntu-latest
@@ -48,10 +52,11 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git pull --rebase origin main
+          
           git add upload_history.txt hash_history.txt || true
-          if git commit -m "Update upload history [skip ci]"; then
-            git pull --rebase origin main
-            git push origin main
-          else
-            echo "No changes to commit"
-          fi
+          
+          git commit -m "Update upload history [skip ci]" || echo "No changes to commit"
+          
+          git push origin main

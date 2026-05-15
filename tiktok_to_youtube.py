@@ -234,22 +234,22 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     except: return None
 
 # ==========================================
-# SEO 2026: INTEREST-GRAPH PRO
+# SEO 2026: INTEREST-GRAPH ULTRA-PRO
 # ==========================================
 
 def get_ai_meta(raw_title: str) -> dict:
     if not GROQ_API_KEY:
         log("No Groq Key - Using Basic SEO", "WARN")
-        return {"title": f"{raw_title[:60]} #shorts #viral", "hook": "WATCH THIS", "desc": f"{raw_title}\n\n#shorts #viral", "tags": ["shorts"]}
+        return {"title": f"Amazing Fact: {raw_title[:50]} #viral #shorts #trending", "hook": "WATCH THIS", "desc": f"{raw_title}\n\n#shorts #viral", "tags": ["shorts"]}
 
     prompt = (
-        f"Context: {raw_title}. Role: Viral YouTube Architect 2026.\n"
-        "Generate Interest-Graph Optimized JSON:\n"
-        "1. title: Curiosity-gap title + exactly 3 viral hashtags (under 100 chars).\n"
-        "2. hook: 3-word ALL CAPS visual hook.\n"
-        "3. desc: 3 lines of deep retention text + exactly 20 niche-viral hashtags.\n"
-        "4. tags: 10 viral tags.\n"
-        "Ensure JSON format only."
+        f"Context: {raw_title}. Role: Viral YouTube SEO Architect 2026.\n"
+        "Generate Interest-Graph Optimized JSON strictly following these rules:\n"
+        "1. title: Minimum 70 characters long. Must be a curiosity-driven hook AND end with 3-4 hashtags. The hashtags alone MUST be 25-30 characters total (e.g., #PsychologyFacts #MindsetSecrets #ViralShorts).\n"
+        "2. hook: 3-word high-impact ALL CAPS visual hook.\n"
+        "3. desc: 3-4 lines of high-retention deep text + exactly 30 viral niche hashtags relevant to 2026 trends.\n"
+        "4. tags: 15 highly relevant viral tags.\n"
+        "Ensure JSON format only. No preamble."
     )
     
     try:
@@ -259,9 +259,15 @@ def get_ai_meta(raw_title: str) -> dict:
             json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "response_format": {"type": "json_object"}},
             timeout=15
         )
-        return json.loads(resp.json()["choices"][0]["message"]["content"])
+        data = json.loads(resp.json()["choices"][0]["message"]["content"])
+        
+        # Ensure title length and description hashtags
+        if len(data.get("title", "")) < 60:
+            data["title"] = f"{data['title']} - Amazing Psychology Fact You Need to Know #ViralShorts #Mindset #Trending"
+            
+        return data
     except:
-        return {"title": f"Viral Fact: {raw_title[:40]} #viral #shorts", "hook": "WAIT FOR IT", "desc": "#viral #shorts", "tags": ["shorts"]}
+        return {"title": f"The Secret Truth About {raw_title[:40]} That Will Change Your Perspective #PsychologyFacts #StoicMindset #ViralShorts", "hook": "WATCH UNTIL END", "desc": "#shorts #viral #trending #psychology", "tags": ["shorts"]}
 
 # ==========================================
 # UPLOAD ENGINE

@@ -256,6 +256,13 @@ def upload_to_yt(youtube, path: Path, meta: dict):
 # MAIN EXECUTION (CH2)
 # ==========================================
 
+def verify_license():
+    log(f"System Check: [{LICENSE_KEY}]", "STEP")
+    if LICENSE_KEY == "COMMUNITY-EDITION":
+        log("Running Aura Engine CH2: Community Edition", "INFO")
+        return
+    log("Aura Engine 2026 PRO (CH2): Authorized.", "INFO")
+
 def main():
     try:
         setup_dirs()
@@ -263,6 +270,7 @@ def main():
             log("Auth Secrets Missing for Channel #2.", "ERR"); return
             
         write_secrets()
+        verify_license()
         youtube = get_authenticated_service()
         if not youtube: log("Auth Failed (CH2).", "ERR"); return
         

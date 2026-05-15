@@ -27,7 +27,7 @@ import textwrap
 # CONFIGURATION (PRO-SERIES 2026)
 # ==========================================
 
-LICENSE_KEY      = os.environ.get("SYSTEM_LICENSE_KEY", "COMMUNITY-EDITION")
+LICENSE_KEY      = os.environ.get("SYSTEM_LICENSE_KEY", "").strip() or "COMMUNITY-EDITION"
 SEARCH_KEYWORDS  = os.environ.get("SEARCH_KEYWORDS", "psychology facts, stoic wisdom, human behavior").strip()
 WATERMARK_TEXT   = os.environ.get("WATERMARK_TEXT", "@VIRALITY").strip()
 CLIENT_SECRETS   = os.environ.get("CLIENT_SECRETS_JSON", "")

@@ -215,13 +215,13 @@ def get_ai_meta(raw_title: str) -> dict:
         return {"title": f"{raw_title[:60]} #shorts #viral", "hook": "WATCH THIS", "desc": f"{raw_title}\n\n#shorts #viral", "tags": ["shorts"]}
 
     prompt = (
-        f"Context: {raw_title}. Role: Viral Movie Recap Architect 2026.\n"
-        "Generate Cinematic SEO JSON for 'Boltas Clips':\n"
-        "1. title: Deep, curiosity-driven movie recap title + 3 viral hashtags (e.g. #movieclips #cinema #recap).\n"
-        "2. hook: 3-word emotional/intense ALL CAPS hook (e.g. 'UNEXPECTED ENDING').\n"
-        "3. desc: 3 lines of intriguing story recap + exactly 20 movie-niche hashtags (#filmtok #movierecaps etc).\n"
-        "4. tags: 10 movie-related tags (e.g. MovieFacts, Cinema, Storyline, Recap).\n"
-        "Ensure output is ONLY valid JSON."
+        f"Context: {raw_title}. Role: Viral Hindi Movie Recap Expert.\n"
+        "Generate Cinematic SEO JSON for 'Boltas Clips' (Hollywood Clips Narrated in Hindi):\n"
+        "1. title: Intense, curiosity-driven Hindi/English mix title + 3 hashtags (#hindimovierecap #hollywoodinhindi #movieclips).\n"
+        "2. hook: 3-word ALL CAPS high-tension hook (e.g. 'HEARTBREAKING ENDING', 'DON'T MISS END').\n"
+        "3. desc: 3 lines of deep Hindi-style storytelling recap + 20 viral movie hashtags (#movierecaphindi #filmy #explainer).\n"
+        "4. tags: 10 tags like HindiRecap, HollywoodHindi, MovieStory, Kahani, Filmy.\n"
+        "Ensure JSON format and Hindi-centric audience targeting."
     )
     
     try:

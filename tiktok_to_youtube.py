@@ -233,12 +233,12 @@ def fetch_videos() -> list[dict]:
                 
                 if "Just a moment" in resp.text or resp.status_code == 403:
                     log(f"Cloudflare block detected (Attempt {retry+1}/3).", "WARN")
-                    time.sleep(5)
+                    time.sleep(1)
                     continue
                 break
             except Exception as e:
                 if retry == 2: raise e
-                time.sleep(5)
+                time.sleep(1)
         
         try:
             data = resp.json()
@@ -292,7 +292,7 @@ def fetch_videos() -> list[dict]:
             else:
                 log(f"Search API Error for '{kw}': {data.get('msg')}", "WARN")
                 
-            time.sleep(2)
+            # Removed delay for faster execution as requested
         except Exception as e:
             log(f"Search error for '{kw}': {e}", "ERR")
             
@@ -539,15 +539,19 @@ def generate_ai_metadata(original_title: str) -> str:
         
     log("Generating AI Metadata using Groq...", "STEP")
     prompt = (
-        f"You are a viral YouTube Shorts SEO expert specializing in STOICISM and HUMAN PSYCHOLOGY.\n"
+        f"You are a World-Class YouTube Shorts SEO Strategist specializing in VIRAL growth.\n"
         f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
-        f"Video Topic/Context: {original_title}\n\n"
-        f"Generate a unique, high-retention package for this video.\n"
-        f"1. TITLE: Max 85 chars. Create a deep, curiosity-driven title AND append exactly 3 trending hashtags (e.g., 'The Stoic Secret #stoic #mindset #wisdom'). Ensure total length is under 100 chars.\n"
-        f"2. HOOK: Max 3 words, ALL CAPS (e.g., 'CONTROL YOUR MIND', 'ANCIENT WISDOM').\n"
-        f"3. DESCRIPTION: 2-3 lines of deep, thought-provoking text + exactly 20 trending/viral niche hashtags relevant to today's date ({datetime.now().strftime('%Y')}).\n"
-        f"4. TAGS: 10-15 tags like Stoicism, PsychologyFacts, MentalStrength, MarcusAurelius, etc.\n\n"
-        f"IMPORTANT: Do NOT repeat common phrases. Each title must be unique. Ensure the title contains 3 hashtags at the end.\n"
+        f"Video Topic: {original_title}\n\n"
+        f"Generate an ULTRA-PREMIUM metadata package designed for 1M+ views.\n"
+        f"1. TITLE: Max 90 chars. Use 'The [Mental Trap/Secret]' style. MUST end with exactly 3 viral hashtags (e.g., #stoic #psychology #mindset).\n"
+        f"2. HOOK: 2-4 powerful words in ALL CAPS (e.g., 'DON'T BE WEAK', 'THE COLD TRUTH'). This is for on-screen text.\n"
+        f"3. DESCRIPTION: \n"
+        f"   - Line 1: A shocking or deep statement that hooks the reader.\n"
+        f"   - Paragraph: 2-3 sentences of 'Ultra-Pro' value-driven commentary about the video's theme.\n"
+        f"   - CTA: A strong call to action (e.g., 'Double tap if you agree & Subscribe for more psychological secrets 🏛️').\n"
+        f"   - Hashtags: Exactly 20 viral, niche-relevant hashtags (e.g. #shorts #viral #sigma...).\n"
+        f"4. TAGS: 15 high-volume SEO keywords separated by commas.\n\n"
+        f"IMPORTANT: NO generic text. Make it feel elite, stoic, and psychological. Ensure the JSON is valid.\n"
         f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -635,10 +639,21 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     ]
     
     chosen_desc, chosen_tags = random.choice(desc_templates)
+    
+    # Ensure description is "Badhiya" (Ultra-Pro)
+    premium_desc = (
+        f"🏛️ {chosen_desc.split('.')[0]}.\n\n"
+        f"Master your mind before it masters you. We dive deep into the psychology of stoicism "
+        f"to help you build an unbreakable spirit and a focused life.\n\n"
+        f"🚀 Join the tribe of the mentally strong.\n"
+        f"✅ Subscribe for Daily Wisdom & Psychology Secrets.\n\n"
+        f"{trending_20}"
+    )
+    
     return {
         "title": clean_title,
         "hook": hook,
-        "description": chosen_desc,
+        "description": premium_desc,
         "tags": chosen_tags
     }
 
@@ -647,11 +662,10 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 # ==========================================
 
 def main():
-    # Human-like randomness: Wait between 10 seconds to 5 minutes before starting
-    # This ensures GitHub Actions don't hit the API at the exact same minute every day
-    delay = random.randint(5, 60)
-    log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
-    time.sleep(delay)
+    # Removed human-like delay as requested for instant execution
+    # delay = random.randint(5, 60)
+    # log(f"Human-like delay initiated: Waiting for {delay} seconds...", "STEP")
+    # time.sleep(delay)
 
     validate_env()
     setup_dirs()

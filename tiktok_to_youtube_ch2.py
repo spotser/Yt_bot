@@ -120,7 +120,6 @@ def fetch_videos() -> list[dict]:
     log(f"STRICT MODE: Fetching from Profile {profile_id}...", "STEP")
     
     try:
-        # Added a small delay to prevent rate limits
         time.sleep(2)
         params = {"unique_id": profile_id, "count": 20, "cursor": 0}
         resp = requests.get(f"{TIKWM_API}/user/posts", params=params, headers=headers, timeout=30)
@@ -182,6 +181,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     hook_file.write_text("\n".join(textwrap.wrap(safe_text, width=15)), encoding="utf-8")
     hook_file_path = str(hook_file).replace('\\', '/')
     
+    # Using double quotes for dict keys to prevent f-string syntax error
     vf = (
         f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setpts={d['pts']}*PTS,"
         f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']},eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']},"
@@ -191,7 +191,11 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
     )
     
-    cmd = f'ffmpeg -y -i "{input_path}" -vf "{vf}" -af "asetrate=44100*{d["pitch"]},atempo={d["pts"]}/{d["pitch"]},aresample=44100" -c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k "{output_path}"'
+    cmd = (
+        f'ffmpeg -y -i "{input_path}" -vf "{vf}" '
+        f'-af "asetrate=44100*{d["pitch"]},atempo={d["pts"]}/{d["pitch"]},aresample=44100" '
+        f'-c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k "{output_path}"'
+    )
     try:
         run_cmd(cmd)
         return output_path
@@ -206,11 +210,9 @@ def load_history():
     if not HISTORY_FILE.exists(): return set()
     return {line.split("|")[0].strip() for line in HISTORY_FILE.read_text(encoding="utf-8").splitlines() if "|" in line}
 
-def save_history(tid, yid, title, fhash):
+def save_history(tid, yid, title):
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
         f.write(f"{tid} | {yid} | {datetime.now()} | {title[:50]}\n")
-    with open(HASH_HISTORY, "a", encoding="utf-8") as f:
-        f.write(f"{fhash}\n")
 
 def generate_ai_metadata(original_title: str) -> str:
     if not GROQ_API_KEY: return None
@@ -252,33 +254,56 @@ def main():
         log("No new videos found on profile.")
         return
 
+    vid_id = str(target.get("id"))
+    raw_caption = target.get("title", "Movie Fact")
+    v_file = download_video(target)
+    if not v_file:
+        log("Download failed.")
+        return
+    
+    meta_raw = generate_ai_metadata(raw_caption)
+    
     movie_tags = (
         "\n\n#hollywoodhindi #moviefacts #hindiexplanation #cinemafacts #movies #hindi "
         "#bollywood #movieexplained #factsinhindi #shorts #viral #trending #amazingfacts "
         "#didyouknow #cinema #film #hollywood #bollywoodfacts #movieclips #storytelling"
     )
     
-    meta = {"title": raw_caption[:50], "hook": "Wait for it!", "description": "", "tags": []}
     if meta_raw:
         try:
             meta = json.loads(meta_raw)
             if "#" not in meta.get("description", ""):
                 meta["description"] = meta.get("description", "") + movie_tags
         except:
-            pass
+            meta = {"title": raw_caption[:50], "hook": "WOW!", "description": raw_caption + movie_tags, "tags": []}
+    else:
+        meta = {"title": raw_caption[:50], "hook": "WOW!", "description": raw_caption + movie_tags, "tags": []}
     
     p_file = process_video(v_file, meta.get("hook", "WOW!"))
-    if not p_file: return
+    if not p_file:
+        log("Processing failed.")
+        return
     
     from googleapiclient.http import MediaFileUpload
-    body = {"snippet": {"title": meta["title"][:100], "description": meta["description"], "categoryId": CATEGORY, "tags": meta.get("tags", [])}, "status": {"privacyStatus": PRIVACY, "selfDeclaredMadeForKids": False}}
+    body = {
+        "snippet": {
+            "title": meta["title"][:100], 
+            "description": meta["description"], 
+            "categoryId": CATEGORY, 
+            "tags": meta.get("tags", [])
+        }, 
+        "status": {
+            "privacyStatus": PRIVACY, 
+            "selfDeclaredMadeForKids": False
+        }
+    }
     media = MediaFileUpload(str(p_file), mimetype="video/mp4", resumable=True)
     
     log(f"Uploading Channel 2: {meta['title'][:50]}")
     request = yt.videos().insert(part="snippet,status", body=body, media_body=media)
     response = request.execute()
     
-    save_history(vid_id, response["id"], meta["title"], "hash_placeholder")
+    save_history(vid_id, response["id"], meta["title"])
     log(f"SUCCESS CH2: https://youtube.com/shorts/{response['id']}")
 
 if __name__ == "__main__":

@@ -10,12 +10,14 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # Necessary to push history update
+      contents: write
     timeout-minutes: 60
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -23,14 +25,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Install FFmpeg & Fonts
+      - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
-
-      - name: Pull latest changes (Prevent Git Conflicts)
-        run: git pull origin main
 
       - name: Run uploader
         env:
@@ -43,9 +41,14 @@ jobs:
           YT_CATEGORY:         "24"
         run: python tiktok_to_youtube_ch2.py
 
-      - name: Commit & Push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update upload history CH2 [skip ci]"
-          file_pattern: 'upload_history_ch2.txt hash_history_ch2.txt'
-          skip_dirty_check: true
+      - name: Robust Commit & Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add upload_history_ch2.txt hash_history_ch2.txt || true
+          if git commit -m "Update upload history CH2 [skip ci]"; then
+            git pull --rebase origin main
+            git push origin main
+          else
+            echo "No changes to commit"
+          fi

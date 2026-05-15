@@ -18,7 +18,6 @@ import requests
 import time
 import random
 import hashlib
-import gdown
 from pathlib import Path
 from datetime import datetime
 import textwrap

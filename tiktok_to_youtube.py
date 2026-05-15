@@ -208,8 +208,15 @@ def fetch_videos() -> list[dict]:
             log(f"Profile fetch failed: {e}", "ERR")
 
     # --- MODE 2: Keyword Search (Fallback or Main) ---
-    # Only run search if profile didn't give enough or if profile isn't set
-    # AND if STRICT_PROFILE is not enabled
+    # Strictly honor the STRICT_PROFILE flag
+    if STRICT_PROFILE:
+        if not all_videos:
+            log("STRICT MODE ENABLED: No videos found on profile. Skipping keyword search.", "WARN")
+            return []
+        else:
+            log(f"STRICT MODE ENABLED: Using {len(all_videos)} videos from profile only.", "INFO")
+    
+    # Only run search if profile didn't give anything AND strict mode is OFF
     if not all_videos and not STRICT_PROFILE:
         keywords = [k.strip() for k in SEARCH_KEYWORDS.split(",") if k.strip()]
         
@@ -217,8 +224,8 @@ def fetch_videos() -> list[dict]:
         final_keywords = [k for k in keywords]
         if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
             try:
-                log("Expanding comedy keywords with AI...", "STEP")
-                prompt = f"Given these comedy keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral comedy shorts (e.g. 'desi comedy', 'office fails'). Return ONLY a comma-separated list of 3 keywords."
+                log(f"Expanding {CHANNEL_NICHE} keywords with AI...", "STEP")
+                prompt = f"Given these keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral shorts. Return ONLY a comma-separated list of 3 keywords."
                 
                 resp = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",

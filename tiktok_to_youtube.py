@@ -458,17 +458,19 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         wrapped_text = "\n".join(textwrap.wrap(safe_text, width=22))
         base_font_size = 50
 
-    # 1. Kinetic Thumbnail Hook: Big pulsing yellow text
-    # 2026 Hack: The hook stays for 3s, fades out, and reappears for the last 2s.
-    hook_file = PROCESSED_DIR / f"{input_path.stem}_hook.txt"
-    hook_file.write_text(wrapped_text, encoding="utf-8")
-    hook_file_path = str(hook_file).replace('\\', '/')
-    
-    thumb_hook = (
-        f"drawtext={font_config}textfile='{hook_file_path}':fontcolor=yellow:fontsize={base_font_size}:"
-        f"x=(w-tw)/2:y=(h-th)/2-200:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:line_spacing=10:"
-        f"enable='between(t,0,0.5)'"
-    )
+    # 1. Kinetic Thumbnail Hook: Big text, visible for 2.5s
+    hook_filter = ""
+    if wrapped_text:
+        safe_hook_text = wrapped_text.replace("'", "").replace("\\", "\\\\").replace(",", "\\,")
+        # Use newline escape for FFmpeg drawtext
+        safe_hook_lines = safe_hook_text.replace("\n", "\\n")
+        thumb_hook = (
+            f"drawtext={font_config}text='{safe_hook_lines}':fontcolor=yellow:fontsize={base_font_size}:"
+            f"x=(w-tw)/2:y=(h-th)/2-200:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:line_spacing=10:"
+            f"enable='between(t\,0\,2.5)'"
+        )
+    else:
+        thumb_hook = ""
     
     # 2. Watermark: Centered horizontally, 30% from bottom
     watermark = f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.3:fontsize=35:x=(w-tw)/2:y=h*0.75:shadowcolor=black@0.5:shadowx=2:shadowy=2"
@@ -481,15 +483,17 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}:gamma=1.05", # Layer 4: Color DNA
         f"hue=h={d['hue']}",                                                    # Layer 5: Subtle Tint
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Micro-tilt
-        f"vignette='PI/4+0.1*sin(t)'",                                          # Layer 7: Dynamic Vignette (Anti-Bot)
+        f"vignette=PI/4+0.1*sin(t)",                                          # Layer 7: Dynamic Vignette (Anti-Bot)
         f"noise=c0s=3:c0f=t+u",                                                 # Layer 8: Grain Jitter
         f"unsharp=3:3:1.2:3:3:0.0",                                             # Layer 9: Sharpness Boost
         f"fps={d['fps']}",                                                      # Layer 10: Frame rate shift
-        thumb_hook,                                                             # Layer 11a: Kinetic Hook
+        thumb_hook,                                                             # Layer 11a: Kinetic Hook (skip if empty)
         watermark,                                                              # Layer 11b: Subtle Watermark
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"   # Final: Lock Resolution
     ]
     
+    # Filter out empty strings from v_filters
+    v_filters = [f for f in v_filters if f]
     vf = ",".join(v_filters)
     
     # Audio filters: Pitch and Speed
@@ -499,7 +503,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f'ffmpeg -y -i "{input_path}" '
         f'-vf "{vf}" '
         f'-af "{af}" '
-        f'-c:v libx264 -preset slow -crf 18 '
+        f'-c:v libx264 -preset veryfast -crf 22 '
         f'-c:a aac -b:a 192k '
         f'"{output_path}"'
     )
@@ -513,6 +517,31 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
 
 def upload_to_youtube(youtube, video_path: Path, title: str, description: str, tags: list):
     from googleapiclient.http import MediaFileUpload
+    from datetime import datetime, timedelta, timezone
+    
+    # CALCULATE PERFECT TIMING (Indian Peak Time Fix)
+    # Target Indian times: 7:15 AM, 1:15 PM, 6:15 PM, 9:15 PM IST
+    # Which corresponds to UTC: 01:45, 07:45, 12:45, 15:45
+    now = datetime.now(timezone.utc)
+    target_utc_hours = [1, 7, 12, 15]
+    
+    # Find the closest target hour that hasn't passed more than 2 hours ago
+    target_hour = target_utc_hours[0]
+    for h in target_utc_hours:
+        if now.hour <= h + 2:
+            target_hour = h
+            break
+            
+    target_time = now.replace(hour=target_hour, minute=45, second=0, microsecond=0)
+    if target_hour < now.hour - 2:  # Handle next day wrap-around
+        target_time = target_time + timedelta(days=1)
+    
+    # If the script ran so late that the target time is less than 15 mins away (or past),
+    # YouTube API will reject publishAt. In that case, publish exactly 15 mins from NOW.
+    if target_time < now + timedelta(minutes=15):
+        target_time = now + timedelta(minutes=15)
+        
+    publish_at_iso = target_time.isoformat().replace('+00:00', 'Z')
     
     body = {
         "snippet": {
@@ -522,7 +551,8 @@ def upload_to_youtube(youtube, video_path: Path, title: str, description: str, t
             "tags": tags
         },
         "status": {
-            "privacyStatus": PRIVACY,
+            "privacyStatus": "private",  # Must be private to use publishAt
+            "publishAt": publish_at_iso,
             "selfDeclaredMadeForKids": False
         }
     }
@@ -805,13 +835,7 @@ def main():
                     f.unlink()
                 except:
                     pass
-        
-        # Cleanup hook text file
-        try:
-            hook_file = PROCESSED_DIR / f"{v_file.stem}_hook.txt"
-            if hook_file.exists(): hook_file.unlink()
-        except:
-            pass
+
 
 if __name__ == "__main__":
     main()

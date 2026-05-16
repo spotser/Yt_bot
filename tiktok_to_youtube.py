@@ -481,7 +481,7 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}:gamma=1.05", # Layer 4: Color DNA
         f"hue=h={d['hue']}",                                                    # Layer 5: Subtle Tint
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Micro-tilt
-        f"vignette='PI/4+0.1*sin(T)'",                                          # Layer 7: Dynamic Vignette (Anti-Bot)
+        f"vignette='PI/4+0.1*sin(t)'",                                          # Layer 7: Dynamic Vignette (Anti-Bot)
         f"noise=c0s=3:c0f=t+u",                                                 # Layer 8: Grain Jitter
         f"unsharp=3:3:1.2:3:3:0.0",                                             # Layer 9: Sharpness Boost
         f"fps={d['fps']}",                                                      # Layer 10: Frame rate shift

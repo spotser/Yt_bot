@@ -574,9 +574,12 @@ def generate_ai_metadata(original_title: str) -> str:
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"}
+                "model": "llama3-8b-8192",
+                "messages": [
+                    {"role": "system", "content": "You are a YouTube SEO expert that outputs ONLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.5
             },
             timeout=20
         )
@@ -642,14 +645,14 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             f"Control your mind, control your life. {clean_title}\n\n"
             f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
             f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n"
-            f"{trending_20}",
+            f"{trending_30}",
             ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes", "Viral", "Shorts"]
         ),
         (
             f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
             f"Deep dive into human behavior and ancient philosophy for a better you.\n"
             f"🔔 Subscribe for your daily dose of mental toughness!\n\n"
-            f"{trending_20}",
+            f"{trending_30}",
             ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom", "Viral", "Shorts"]
         )
     ]

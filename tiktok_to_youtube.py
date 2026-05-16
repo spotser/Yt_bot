@@ -195,15 +195,19 @@ def fetch_videos() -> list[dict]:
         # Sports/Events (High Copyright Risk)
         "ipl", "bcci", "icc", "wwe", "football", "cricket", "nba", "fifa", "ufc", "wrestling", "match", "highlights", "sports", "premier league", "champions",
         # Generic/Spam
-        "follow for more", "link in bio", "subscribe", "buy now", "sale", "discount", "promo"
+        "follow for more", "link in bio", "subscribe", "buy now", "sale", "discount", "promo",
+        "part 1", "part 2", "part 3", "continuation", "to be continued" # Avoid split parts
     ]
 
+    # --- 2026 VIRAL KEYWORD INJECTION ---
+    VIRAL_MODIFIERS = ["viral", "trending", "4k", "pov", "mindset", "motivation", "success", "aesthetic"]
+    
     # --- SMART KEYWORD EXPANSION ---
     final_keywords = [k for k in keywords]
-    if GROQ_API_KEY and random.random() < 0.3: # 30% chance to expand niche
+    if GROQ_API_KEY:
         try:
-            log("Expanding comedy keywords with AI...", "STEP")
-            prompt = f"Given these comedy keywords: {SEARCH_KEYWORDS}, suggest 3 more trending sub-niches for viral comedy shorts (e.g. 'desi comedy', 'office fails'). Return ONLY a comma-separated list of 3 keywords."
+            log("Expanding niche keywords with AI (2026 Mode)...", "STEP")
+            prompt = f"Given these niches: {SEARCH_KEYWORDS}, suggest 5 more hyper-specific trending sub-niches for viral shorts. Avoid generic terms. Return ONLY a comma-separated list."
             
             # Simple direct call to Groq for keyword expansion
             resp = requests.post(
@@ -454,8 +458,8 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
         wrapped_text = "\n".join(textwrap.wrap(safe_text, width=22))
         base_font_size = 50
 
-    # 1. Thumbnail Hook: Big yellow text (increased to 2s for better thumbnail chance)
-    # Using textfile for robust multiline handling
+    # 1. Kinetic Thumbnail Hook: Big pulsing yellow text
+    # 2026 Hack: The hook stays for 3s, fades out, and reappears for the last 2s.
     hook_file = PROCESSED_DIR / f"{input_path.stem}_hook.txt"
     hook_file.write_text(wrapped_text, encoding="utf-8")
     hook_file_path = str(hook_file).replace('\\', '/')
@@ -463,27 +467,27 @@ def process_video(input_path: Path, hook_text: str) -> Path | None:
     thumb_hook = (
         f"drawtext={font_config}textfile='{hook_file_path}':fontcolor=yellow:fontsize={base_font_size}:"
         f"x=(w-tw)/2:y=(h-th)/2-200:box=1:boxcolor=black@0.8:boxborderw=30:fix_bounds=1:line_spacing=10:"
-        f"enable='between(t,0,1.0)'"
+        f"enable='between(t,0,0.5)'"
     )
     
     # 2. Watermark: Centered horizontally, 30% from bottom
-    watermark = f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.5:fontsize=40:x=(w-tw)/2:y=h*0.7:shadowcolor=black:shadowx=2:shadowy=2"
+    watermark = f"drawtext={font_config}text='{safe_watermark}':fontcolor=white@0.3:fontsize=35:x=(w-tw)/2:y=h*0.75:shadowcolor=black@0.5:shadowx=2:shadowy=2"
 
-    # --- 11 LAYER FILTER CHAIN ---
+    # --- 11 LAYER 2026 FILTER CHAIN (DNA HACK) ---
     v_filters = [
-        f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", # Layer 1: Standardize resolution
-        f"setpts={d['pts']}*PTS",                                               # Layer 2: Speed Shift
-        f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']}",            # Layer 3: Random Edge Crop
-        f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}", # Layer 4: Color EQ
-        f"hue=h={d['hue']}",                                                    # Layer 5: Hue Shift
-        f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Invisible Tilt
-        f"scale=1080:1920:force_original_aspect_ratio=increase,scale=iw*{d['zoom']}:ih*{d['zoom']},crop=1080:1920",                  # Layer 7: Static Zoom
-        f"noise=c0s=2:c0f=t+u",                                                 # Layer 8: Film Grain
-        f"unsharp=5:5:0.8:5:5:0.0",                                             # Layer 9: Sharpening
-        f"fps={d['fps']}",                                                      # Layer 10: FPS Manipulation
-        thumb_hook,                                                             # Layer 11a: Overlay Hook (Thumb)
-        watermark,                                                              # Layer 11b: Watermark
-        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"   # Final Layer: Enforce final aspect
+        f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920", # Layer 1: Standardize
+        f"setpts={d['pts']}*PTS",                                               # Layer 2: Speed shift
+        f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']}",            # Layer 3: Jitter Crop
+        f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}:gamma=1.05", # Layer 4: Color DNA
+        f"hue=h={d['hue']}",                                                    # Layer 5: Subtle Tint
+        f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",                    # Layer 6: Micro-tilt
+        f"vignette='PI/4+0.1*sin(T)'",                                          # Layer 7: Dynamic Vignette (Anti-Bot)
+        f"noise=c0s=3:c0f=t+u",                                                 # Layer 8: Grain Jitter
+        f"unsharp=3:3:1.2:3:3:0.0",                                             # Layer 9: Sharpness Boost
+        f"fps={d['fps']}",                                                      # Layer 10: Frame rate shift
+        thumb_hook,                                                             # Layer 11a: Kinetic Hook
+        watermark,                                                              # Layer 11b: Subtle Watermark
+        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"   # Final: Lock Resolution
     ]
     
     vf = ",".join(v_filters)
@@ -561,15 +565,17 @@ def generate_ai_metadata(original_title: str) -> str:
         f"You are a YouTube Shorts Growth Expert. Target Audience: Stoicism/Psychology.\n"
         f"Current Date: {datetime.now().strftime('%B %d, %Y')}\n"
         f"Video Topic: {original_title}\n\n"
-        f"Generate an ULTRA-PERFECT SEO metadata package:\n"
-        f"1. TITLE: Exactly 70 characters. The first 40-45 chars should be a curiosity-driven hook. The last 25-30 chars must be 3-4 viral hashtags (e.g. #mindset #stoic #wisdom).\n"
-        f"2. HOOK: 2-3 words in ALL CAPS for the on-screen text (e.g., 'STAY COLD').\n"
-        f"3. DESCRIPTION: Exactly 8-10 lines of high-value, deep psychological commentary. \n"
-        f"   - Include a Call to Action (CTA) like 'Subscribe for daily wisdom'.\n"
-        f"   - Followed by a block of 25-30 trending hashtags relevant to the niche.\n"
-        f"4. TAGS: 15-20 perfect SEO tags for maximum reach.\n\n"
-        f"IMPORTANT: Ensure the title is exactly 70 characters. No repetition. Valid JSON ONLY.\n"
-        f"Format as JSON: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
+        f"Generate an ULTRA-PERFECT SEO metadata package for 2026 Algorithm:\n"
+        f"1. TITLE: Exactly 70 characters. Use Curiosity Gap + 1 High-Energy Emoji. First 40 chars = HOOK. Last 30 chars = 3 hashtags.\n"
+        f"2. HOOK: 2-3 words in ALL CAPS (e.g., 'STAY COLD', 'ALPHA TRUTH').\n"
+        f"3. DESCRIPTION: High-retention semantic formatting:\n"
+        f"   - Line 1: Emotional hook using Unicode bold (if possible) or caps.\n"
+        f"   - Line 2-5: Deep value proposition.\n"
+        f"   - Line 6: Strong CTA (Subscribe).\n"
+        f"   - Block: 25 trending hashtags in the niche.\n"
+        f"4. TAGS: 15 specific semantic tags.\n\n"
+        f"IMPORTANT: No placeholders. Valid JSON ONLY.\n"
+        f"Format: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
     try:
@@ -729,32 +735,37 @@ def main():
             else:
                 log(f"No usable video found in Drive link: {link[:40]}...", "INFO")
 
-    # 2. Fallback to TikTok Scraper
+    # 2. Fallback to TikTok Scraper (with Retry Logic for Schedule Reliability)
     if not v_file:
         videos = fetch_videos()
         if not videos:
-            log("No videos found for search keywords.", "WARN")
+            log("Primary keywords failed. Trying fallback niche to save schedule...", "WARN")
+            # Dynamic fallback to ensure NO SCHEDULE IS MISSED
+            os.environ["SEARCH_KEYWORDS"] = "stoic wisdom, success motivation"
+            videos = fetch_videos()
+            
+        if not videos:
+            log("No videos found even after fallback. Aborting.", "ERR")
             return
 
         if UPLOAD_OLDEST:
             videos.reverse()
             
-        for v in videos:
+        # Try top 10 videos in order of engagement to find a valid download
+        for v in videos[:10]:
             temp_vid_id = str(v.get("video_id", v.get("id")))
             if temp_vid_id not in history_ids:
-                target = v
-                break
-                
-        if not target:
-            log("Everything is up to date. No new videos.", "INFO")
-            return
-
-        vid_id = str(target.get("video_id", target.get("id")))
-        raw_caption = target.get("title", "") or "New Short"
-        v_file = download_video(target)
+                log(f"Attempting to download video candidate: {temp_vid_id}")
+                v_file = download_video(v)
+                if v_file:
+                    vid_id = temp_vid_id
+                    raw_caption = v.get("title", "") or "New Short"
+                    break
+                else:
+                    log(f"Download failed for {temp_vid_id}, trying next...", "WARN")
 
     if not v_file:
-        log("Failed to source any video.", "ERR")
+        log("CRITICAL: Failed to source any video after multiple attempts. Schedule might be missed!", "ERR")
         return
     
     # Metadata

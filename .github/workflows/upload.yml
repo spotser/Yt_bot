@@ -31,7 +31,13 @@ jobs:
       - name: Install FFmpeg & Fonts
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
 
-      - name: Run uploader
+      - name: Run uploader with Retry
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 20
+          max_attempts: 3
+          retry_on: error
+          command: python tiktok_to_youtube.py
         env:
           SEARCH_KEYWORDS:     ${{ secrets.SEARCH_KEYWORDS }}
           CLIENT_SECRETS_JSON: ${{ secrets.CLIENT_SECRETS_JSON }}
@@ -42,7 +48,6 @@ jobs:
           YT_PRIVACY:          public
           YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"
-        run: python tiktok_to_youtube.py
 
       - name: Commit & Push changes
         uses: stefanzweifel/git-auto-commit-action@v5

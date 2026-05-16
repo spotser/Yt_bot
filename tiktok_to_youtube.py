@@ -233,12 +233,15 @@ def fetch_videos() -> list[dict]:
                 
                 if "Just a moment" in resp.text or resp.status_code == 403:
                     log(f"Cloudflare block detected (Attempt {retry+1}/3).", "WARN")
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
                 break
             except Exception as e:
                 if retry == 2: raise e
-                time.sleep(1)
+                time.sleep(2)
+        
+        # Rate limiting for Free API (1 request/second)
+        time.sleep(1.5)
         
         try:
             data = resp.json()
@@ -574,15 +577,14 @@ def generate_ai_metadata(original_title: str) -> str:
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "llama3-8b-8192",
-                "messages": [
-                    {"role": "system", "content": "You are a YouTube SEO expert that outputs ONLY valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.5
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
             },
-            timeout=20
+            timeout=25
         )
+        if resp.status_code != 200:
+            log(f"Groq API Error Body: {resp.text}", "ERR")
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
     except Exception as e:

@@ -188,8 +188,7 @@ def download_video_ch2() -> tuple[Path, str] | None:
         "-f", "wv*[vcodec*=avc1]+wa/b[ext=mp4]/b",
         "-S", "res:720",
         "--force-ipv4",
-        "--playlist-items", "1-10",  # Check top 10 recent videos
-        "--max-downloads", "1",      # Download exactly 1 new video
+        "--max-downloads", "1",      # Download exactly 1 new video (scans the entire profile history one-by-one)
         "--write-info-json",        # Save metadata to parse caption
         "-o", str(DOWNLOAD_DIR / "%(id)s.%(ext)s")
     ]

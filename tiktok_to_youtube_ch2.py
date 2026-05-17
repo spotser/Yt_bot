@@ -196,9 +196,18 @@ def download_video_ch2() -> tuple[Path, str] | None:
     
     try:
         log("Running yt-dlp to fetch the latest video...", "STEP")
-        # Run yt-dlp command
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        log("yt-dlp completed successfully.")
+        # Run yt-dlp command (no check=True so we can inspect return code)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # 101 is the official yt-dlp success code when max-downloads is hit.
+        # 0 is returned when it successfully completes (e.g., checks and finds no new videos to download).
+        if result.returncode not in [0, 101]:
+            log(f"yt-dlp failed with exit code {result.returncode}.", "ERR")
+            log(f"yt-dlp stdout:\n{result.stdout}", "ERR")
+            log(f"yt-dlp stderr:\n{result.stderr}", "ERR")
+            return None
+            
+        log(f"yt-dlp completed successfully (exit code: {result.returncode}).")
     except Exception as e:
         log(f"yt-dlp execution failed: {e}", "ERR")
         return None

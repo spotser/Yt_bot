@@ -1,5 +1,7 @@
 # Temporary files
 temp_work/
+temp_work_ch2/*
+!temp_work_ch2/downloaded_ch2.txt
 __pycache__/
 *.mp4
 *.pickle
@@ -7,4 +9,6 @@ token_b64.txt
 
 # Sensitive credentials (Already in GitHub Secrets)
 client_secrets.json
+client_secrets_ch2.json
 token.pickle
+token_ch2.pickle

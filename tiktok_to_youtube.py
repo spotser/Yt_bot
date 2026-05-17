@@ -525,12 +525,23 @@ def upload_to_youtube(youtube, video_path: Path, title: str, description: str, t
     now = datetime.now(timezone.utc)
     target_utc_hours = [1, 7, 12, 15]
     
-    # Find the closest target hour that hasn't passed more than 2 hours ago
-    target_hour = target_utc_hours[0]
-    for h in target_utc_hours:
-        if now.hour <= h + 2:
-            target_hour = h
-            break
+    cron_schedule = os.environ.get("CRON_SCHEDULE", "").strip()
+    
+    if cron_schedule == "00 0 * * *":
+        target_hour = 1
+    elif cron_schedule == "00 6 * * *":
+        target_hour = 7
+    elif cron_schedule == "00 12 * * *":
+        target_hour = 12
+    elif cron_schedule == "00 18 * * *":
+        target_hour = 15
+    else:
+        # Fallback to nearest slot if manual run or missing cron
+        target_hour = target_utc_hours[0]
+        for h in target_utc_hours:
+            if now.hour <= h + 2:
+                target_hour = h
+                break
             
     target_time = now.replace(hour=target_hour, minute=45, second=0, microsecond=0)
     if target_hour < now.hour - 2:  # Handle next day wrap-around
@@ -599,12 +610,12 @@ def generate_ai_metadata(original_title: str) -> str:
         f"1. TITLE: Exactly 70 characters. Use Curiosity Gap + 1 High-Energy Emoji. First 40 chars = HOOK. Last 30 chars = 3 hashtags.\n"
         f"2. HOOK: 2-3 words in ALL CAPS (e.g., 'STAY COLD', 'ALPHA TRUTH').\n"
         f"3. DESCRIPTION: High-retention semantic formatting:\n"
-        f"   - Line 1: Emotional hook using Unicode bold (if possible) or caps.\n"
+        f"   - Line 1: Emotional hook in ALL CAPS. DO NOT use any markdown asterisks (**).\n"
         f"   - Line 2-5: Deep value proposition.\n"
         f"   - Line 6: Strong CTA (Subscribe).\n"
-        f"   - Block: 25 trending hashtags in the niche.\n"
+        f"   - Block: EXACTLY 20 trending hashtags in the niche. No more, no less.\n"
         f"4. TAGS: 15 specific semantic tags.\n\n"
-        f"IMPORTANT: No placeholders. Valid JSON ONLY.\n"
+        f"IMPORTANT: No placeholders. Valid JSON ONLY. NEVER USE '**' OR ANY MARKDOWN BOLDING.\n"
         f"Format: {{\"title\": \"...\", \"hook\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
     
@@ -669,13 +680,12 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     
     clean_title = re.sub(r'[<>]', '', clean_title).strip()[:100]
     
-    # 3. Dynamic Description (8-10 Lines) & 25-30 Hashtags
-    trending_30 = (
+    # 3. Dynamic Description (8-10 Lines) & Exactly 20 Hashtags
+    trending_20 = (
         "#stoicism #psychology #mindset #wisdom #mentalstrength #stoicquotes "
         "#humanbehavior #darkpsychology #growth #selfimprovement #discipline "
         "#motivation #shorts #viral #trending #dailywisdom #stoic #lifehacks "
-        "#success #mentalhealth #sigma #stoicmindset #psychologyfacts #mindsetmatters "
-        "#ancientwisdom #discipline #focus #power #control #mindsetshift"
+        "#success #mentalhealth"
     )
     
     desc_templates = [
@@ -683,14 +693,14 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
             f"Control your mind, control your life. {clean_title}\n\n"
             f"Master the art of Stoicism and understand the human mind to become unstoppable. 👇\n\n"
             f"✅ Subscribe for daily wisdom & psychology secrets.\n🏛️ Stay Stoic.\n\n"
-            f"{trending_30}",
+            f"{trending_20}",
             ["Stoicism", "Psychology", "Mindset", "Wisdom", "MentalStrength", "StoicQuotes", "Viral", "Shorts"]
         ),
         (
             f"The secret to a peaceful life lies in your perspective. {clean_title}\n\n"
             f"Deep dive into human behavior and ancient philosophy for a better you.\n"
             f"🔔 Subscribe for your daily dose of mental toughness!\n\n"
-            f"{trending_30}",
+            f"{trending_20}",
             ["PsychologyFacts", "StoicMindset", "Motivation", "SelfImprovement", "AncientWisdom", "Viral", "Shorts"]
         )
     ]
@@ -707,7 +717,7 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
         f"Focus on what you can control, and ignore the rest.\n"
         f"🚀 Join the tribe of the mentally strong.\n"
         f"✅ Subscribe for Daily Wisdom & Psychology Secrets.\n\n"
-        f"{trending_30}"
+        f"{trending_20}"
     )
     
     return {

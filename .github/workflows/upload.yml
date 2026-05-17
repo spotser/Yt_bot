@@ -48,6 +48,7 @@ jobs:
           YT_PRIVACY:          public
           YT_CATEGORY:         "24"
           UPLOAD_OLDEST:       "false"
+          CRON_SCHEDULE:       ${{ github.event.schedule }}
 
       - name: Commit & Push changes
         uses: stefanzweifel/git-auto-commit-action@v5

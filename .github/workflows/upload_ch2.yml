@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -46,14 +48,33 @@ jobs:
           YT_CATEGORY:         "24"
           CRON_SCHEDULE:       ${{ github.event.schedule }}
 
-      - name: Pull remote changes
+      - name: Commit & Push changes with Rebase Loop
         run: |
+          git checkout main
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash
-
-      - name: Commit & Push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update upload history channel 2 [skip ci]"
-          file_pattern: 'upload_history_ch2.txt hash_history_ch2.txt temp_work_ch2/downloaded_ch2.txt'
+          
+          for i in {1..10}; do
+            echo "Attempt $i to commit and push changes..."
+            git pull --rebase --autostash origin main
+            
+            git add upload_history_ch2.txt hash_history_ch2.txt temp_work_ch2/downloaded_ch2.txt 2>/dev/null || true
+            
+            if git diff --cached --quiet; then
+              echo "No changes to commit."
+              exit 0
+            fi
+            
+            git commit -m "Update upload history channel 2 [skip ci]"
+            
+            if git push origin main; then
+              echo "Push successful!"
+              exit 0
+            else
+              echo "Push rejected! Remote changed. Retrying in 5 seconds..."
+              git reset HEAD~1
+              sleep 5
+            fi
+          done
+          echo "Failed to commit and push after 10 attempts."
+          exit 1

@@ -60,7 +60,7 @@ def run_cmd(cmd):
 def escape_ffmpeg_text(text: str) -> str:
     if not text: return ""
     text = text.replace("'", "").replace(":", "")
-    text = text.replace("\\", "\\\\").replace(",", "\\,")
+    text = text.replace("\\", "\\").replace(",", "\,")
     return text.encode('ascii', 'ignore').decode('ascii').strip()
 
 def setup_dirs():
@@ -88,7 +88,7 @@ def load_cookies():
     try:
         decoded = base64.b64decode(COOKIES_B64).decode("utf-8")
         cookies = json.loads(decoded)
-        
+
         # Fix sameSite values for Playwright
         for cookie in cookies:
             same_site = cookie.get("sameSite", "")
@@ -100,7 +100,7 @@ def load_cookies():
             cookie.pop("firstPartyDomain", None)
             cookie.pop("partitionKey", None)
             cookie.pop("session", None)
-        
+
         COOKIES_PATH.write_text(json.dumps(cookies), encoding="utf-8")
         log(f"Loaded {len(cookies)} YouTube cookies")
         return cookies
@@ -251,10 +251,6 @@ def process_video(input_path: Path) -> Path | None:
         f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']}",
         f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}:gamma=1.05",
         f"hue=h={d['hue']}",
-        
-        
-        
-        
         f"fps={d['fps']}",
         watermark,
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
@@ -280,14 +276,14 @@ def process_video(input_path: Path) -> Path | None:
         return None
 
 # ==========================================
-# GROQ METADATA
+# GROQ METADATA (using openai/gpt-oss-120b)
 # ==========================================
 
 def generate_ai_metadata(original_title: str):
     if not GROQ_API_KEY:
         return None
 
-    log("Generating Hinglish SEO metadata via Groq...", "STEP")
+    log("Generating Hinglish SEO metadata via Groq (openai/gpt-oss-120b)...", "STEP")
 
     system_prompt = (
         "You are a YouTube Shorts SEO expert specialising in Hindi/Hinglish movie content for Indian audiences. "
@@ -321,7 +317,7 @@ Return ONLY this JSON (no extra keys):
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.3-70b-versatile",
+                    "model": "openai/gpt-oss-120b",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user",   "content": user_prompt}
@@ -330,7 +326,7 @@ Return ONLY this JSON (no extra keys):
                     "temperature": 0.7,
                     "max_tokens": 1200,
                 },
-                timeout=30
+                timeout=60
             )
             resp.raise_for_status()
             raw = resp.json()["choices"][0]["message"]["content"]
@@ -498,45 +494,84 @@ async def playwright_upload(video_path: str, title: str, description: str,
         await page.goto("https://studio.youtube.com/channel/UC/videos/upload", wait_until="networkidle")
 
         await asyncio.sleep(random.uniform(1.5, 2.5))
-        # Upload page opened directly; dropdown skipped
-        # --- Attach file ---
+
+        # --- Attach file via Playwright set_input_files ---
         log("Attaching video file...", "STEP")
 
-        try:
-            await page.wait_for_selector(
-                "input[type='file']",
-                state="attached",
-                timeout=15000
-            )
+        attached = False
+        max_attach_attempts = 3
 
-            await page.locator(
-                "input[type='file']"
-            ).first.set_input_files(video_path)
-
-            log("File attached!")
-
-        except Exception as e:
-            log(f"File input failed: {e}", "ERR")
-
+        for attempt in range(max_attach_attempts):
             try:
-                await page.screenshot(
-                    path="upload_error.png",
-                    full_page=True
-                )
+                # Wait for the page to fully load upload UI
+                await asyncio.sleep(random.uniform(2.0, 3.0))
+
+                # Method 1: Try to find input directly (may be hidden)
+                file_input = await page.query_selector("input[type='file']")
+                if file_input:
+                    await file_input.set_input_files(video_path)
+                    log(f"File attached via hidden input (attempt {attempt+1})")
+                    attached = True
+                    break
+
+            except Exception as e1:
+                log(f"Hidden input failed: {e1}", "WARN")
+
+                # Method 2: Try clicking upload area first, then set files
+                try:
+                    # Click the upload area/dropzone to trigger file input creation
+                    upload_area_selectors = [
+                        "#upload-content",
+                        "[id*='upload']",
+                        "ytcp-uploads-dialog",
+                        "[role='dialog']",
+                        "#dialog",
+                        ".upload-dialog",
+                        "ytcp-video-upload-dialog",
+                    ]
+
+                    for sel in upload_area_selectors:
+                        try:
+                            area = await page.query_selector(sel)
+                            if area:
+                                await area.click()
+                                await asyncio.sleep(1.0)
+                                break
+                        except:
+                            continue
+
+                    # Try finding input again after click
+                    await asyncio.sleep(2.0)
+                    file_input = await page.query_selector("input[type='file']")
+                    if file_input:
+                        await file_input.set_input_files(video_path)
+                        log(f"File attached after click trigger (attempt {attempt+1})")
+                        attached = True
+                        break
+
+                except Exception as e2:
+                    log(f"Click trigger failed: {e2}", "WARN")
+
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+
+        if not attached:
+            log("All file attachment methods failed", "ERR")
+            try:
+                await page.screenshot(path="upload_error.png", full_page=True)
             except:
                 pass
-
             await browser.close()
             return None
 
         await asyncio.sleep(random.uniform(3.0, 5.0))
-
 
         # --- Title ---
         title_selectors = [
             "#textbox[aria-label='Add a title that describes your video']",
             "#title-textarea #textbox",
             "ytcp-social-suggestions-textbox #textbox",
+            "[aria-label='Add a title that describes your video']",
+            "#title-textarea",
         ]
         for sel in title_selectors:
             try:
@@ -553,6 +588,8 @@ async def playwright_upload(video_path: str, title: str, description: str,
         desc_selectors = [
             "#textbox[aria-label='Tell viewers about your video']",
             "#description-textarea #textbox",
+            "[aria-label='Tell viewers about your video']",
+            "#description-textarea",
         ]
         for sel in desc_selectors:
             try:
@@ -578,7 +615,7 @@ async def playwright_upload(video_path: str, title: str, description: str,
 
         await asyncio.sleep(random.uniform(0.5, 1.0))
 
-        # --- Next x3  (Details → Video elements → Checks → Visibility) ---
+        # --- Next x3 (Details → Video elements → Checks → Visibility) ---
         for step in range(3):
             # Close any open autocomplete / suggestion dropdown first
             try:
@@ -594,29 +631,74 @@ async def playwright_upload(video_path: str, title: str, description: str,
                 "div#next-button",
                 "ytcp-button[id='next-button']",
                 "button[aria-label='Next']",
+                "[aria-label='Next']",
             ]
+
+            # Try each selector with wait
             for sel in next_selectors:
                 try:
                     btn = await page.wait_for_selector(sel, state="visible", timeout=12000)
-                    await btn.scroll_into_view_if_needed()
-                    await asyncio.sleep(random.uniform(0.5, 1.0))
-                    await btn.click(force=True)
-                    clicked_next = True
-                    log(f"Next step {step+1}/3 ✓")
-                    break
+                    if btn:
+                        await btn.scroll_into_view_if_needed()
+                        await asyncio.sleep(random.uniform(0.5, 1.0))
+                        await btn.click(force=True)
+                        clicked_next = True
+                        log(f"Next step {step+1}/3 clicked ✓")
+                        break
                 except:
                     continue
 
             if not clicked_next:
-                # JS fallback
-                await page.evaluate("""() => {
-                    const b = document.querySelector('ytcp-button#next-button') ||
-                              document.querySelector('#next-button');
-                    if (b) b.click();
-                }""")
-                log(f"Next step {step+1}/3 via JS fallback")
+                # JS fallback as last resort
+                try:
+                    await page.evaluate("""() => {
+                        const buttons = document.querySelectorAll('ytcp-button');
+                        for (const b of buttons) {
+                            const label = b.getAttribute('aria-label') || b.textContent || '';
+                            if (label.toLowerCase().includes('next')) {
+                                b.click();
+                                return true;
+                            }
+                        }
+                        // Fallback: find by ID
+                        const b = document.querySelector('ytcp-button#next-button') ||
+                                    document.querySelector('#next-button');
+                        if (b) { b.click(); return true; }
+                        return false;
+                    }""")
+                    clicked_next = True
+                    log(f"Next step {step+1}/3 via JS fallback")
+                except Exception as js_err:
+                    log(f"JS fallback also failed: {js_err}", "WARN")
 
-            await asyncio.sleep(random.uniform(2.5, 3.5))
+            if not clicked_next:
+                log(f"Could not click Next for step {step+1}", "ERR")
+                try:
+                    await page.screenshot(path=f"next_error_step{step+1}.png", full_page=True)
+                except:
+                    pass
+                # Continue anyway, sometimes the page auto-advances
+
+            # Wait longer between steps for processing
+            await asyncio.sleep(random.uniform(3.0, 5.0))
+
+            # Check if we're stuck on same page (upload still processing)
+            max_wait = 60
+            waited = 0
+            while waited < max_wait:
+                try:
+                    # Check if progress bar still exists
+                    prog = await page.query_selector(".progress-label, #progress, [role='progressbar']")
+                    if prog:
+                        txt = await prog.inner_text() if hasattr(prog, 'inner_text') else ""
+                        if txt and "%" in txt:
+                            log(f"  Upload processing: {txt.strip()}")
+                            await asyncio.sleep(5)
+                            waited += 5
+                            continue
+                except:
+                    pass
+                break
 
             try:
                 await page.screenshot(path=f"step_{step+1}_after_next.png")
@@ -669,6 +751,7 @@ async def playwright_upload(video_path: str, title: str, description: str,
             "#done-button",
             "ytcp-button#done-button",
             "[aria-label='Publish']",
+            "[aria-label='Save']",
         ]
         published = False
         for sel in publish_selectors:
@@ -681,6 +764,28 @@ async def playwright_upload(video_path: str, title: str, description: str,
                 break
             except:
                 continue
+
+        if not published:
+            # Final JS fallback for publish
+            try:
+                await page.evaluate("""() => {
+                    const buttons = document.querySelectorAll('ytcp-button');
+                    for (const b of buttons) {
+                        const label = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
+                        if (label.includes('publish') || label.includes('save') || label.includes('done')) {
+                            b.click();
+                            return true;
+                        }
+                    }
+                    const done = document.querySelector('#done-button') || 
+                                 document.querySelector('ytcp-button#done-button');
+                    if (done) { done.click(); return true; }
+                    return false;
+                }""")
+                published = True
+                log("Published via JS fallback!")
+            except:
+                pass
 
         if not published:
             log("Publish button not found", "ERR")

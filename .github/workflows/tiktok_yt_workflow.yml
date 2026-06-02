@@ -58,7 +58,7 @@ jobs:
           timeout_minutes: 25
           max_attempts: 3
           retry_on: error
-          command: python tiktok_to_youtube_ch2.py
+          command: python yt_playwright_upload.py
         env:
           TIKTOK_PROFILE_ID: ${{ secrets.TIKTOK_PROFILE_ID }}
           YT_COOKIES_B64:    ${{ secrets.YT_COOKIES_B64 }}

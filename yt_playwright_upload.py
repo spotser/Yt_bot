@@ -454,7 +454,7 @@ async def playwright_upload(video_path: str, title: str, description: str,
         log("Attaching video file...", "STEP")
 
         try:
-        await page.wait_for_selector(
+           await page.wait_for_selector(
             "input[type='file']",
             state="attached",
             timeout=15000

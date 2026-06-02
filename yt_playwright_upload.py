@@ -88,6 +88,19 @@ def load_cookies():
     try:
         decoded = base64.b64decode(COOKIES_B64).decode("utf-8")
         cookies = json.loads(decoded)
+        
+        # Fix sameSite values for Playwright
+        for cookie in cookies:
+            same_site = cookie.get("sameSite", "")
+            if same_site not in ["Strict", "Lax", "None"]:
+                cookie["sameSite"] = "None"
+            # Remove fields Playwright doesn't accept
+            cookie.pop("hostOnly", None)
+            cookie.pop("storeId", None)
+            cookie.pop("firstPartyDomain", None)
+            cookie.pop("partitionKey", None)
+            cookie.pop("session", None)
+        
         COOKIES_PATH.write_text(json.dumps(cookies), encoding="utf-8")
         log(f"Loaded {len(cookies)} YouTube cookies")
         return cookies

@@ -24,17 +24,33 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
       - name: Install FFmpeg & Fonts
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
 
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
       - name: Install Playwright + Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
-          pip install playwright
           playwright install chromium
-          playwright install-deps chromium
+
+      - name: Install Playwright system deps
+        run: playwright install-deps chromium
 
       - name: Run BOLTAS CLIPS uploader
         uses: nick-fields/retry@v3
@@ -42,7 +58,7 @@ jobs:
           timeout_minutes: 25
           max_attempts: 3
           retry_on: error
-          command: python yt_playwright_upload.py
+          command: python tiktok_to_youtube_ch2.py
         env:
           TIKTOK_PROFILE_ID: ${{ secrets.TIKTOK_PROFILE_ID }}
           YT_COOKIES_B64:    ${{ secrets.YT_COOKIES_B64 }}

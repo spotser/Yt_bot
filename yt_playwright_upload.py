@@ -451,15 +451,34 @@ async def playwright_upload(video_path: str, title: str, description: str,
             pass
 
         # --- Attach file ---
-        log("Attaching video file...", "STEP")
-        try:
-            file_input = await page.wait_for_selector("input[type='file']", timeout=10000)
-            await file_input.set_input_files(video_path)
-            log("File attached!")
-        except Exception as e:
-            log(f"File input failed: {e}", "ERR")
-            await browser.close()
-            return None
+log("Attaching video file...", "STEP")
+
+try:
+    await page.wait_for_selector(
+        "input[type='file']",
+        state="attached",
+        timeout=15000
+    )
+
+    await page.locator(
+        "input[type='file']"
+    ).first.set_input_files(video_path)
+
+    log("File attached!")
+
+except Exception as e:
+    log(f"File input failed: {e}", "ERR")
+
+    try:
+        await page.screenshot(
+            path="upload_error.png",
+            full_page=True
+        )
+    except:
+        pass
+
+    await browser.close()
+    return None
 
         await asyncio.sleep(random.uniform(3.0, 5.0))
 

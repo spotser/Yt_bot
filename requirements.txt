@@ -5,3 +5,4 @@ google-api-python-client>=2.95.0
 gdown>=4.7.1
 schedule>=1.2.1
 yt-dlp>=2025.2.19
+playwright

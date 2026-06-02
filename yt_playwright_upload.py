@@ -288,96 +288,37 @@ def generate_ai_metadata(original_title: str):
         return None
 
     log("Generating Hinglish SEO metadata via Groq...", "STEP")
-
-    system_prompt = (
-        "You are a YouTube Shorts SEO expert specialising in Hindi/Hinglish movie content for Indian audiences. "
-        "You ALWAYS respond with a single valid JSON object and NOTHING else — no markdown, no backticks, no commentary. "
-        "Every field is mandatory. Follow the exact format shown."
+    prompt = (
+        f"You are a YouTube Shorts Growth Expert. Target: Hindi movie lovers in India.\n"
+        f"Video Caption: {original_title}\n\n"
+        f"Generate ULTRA-PERFECT SEO metadata in Hinglish/Hindi for 2026 Algorithm:\n"
+        f"1. TITLE: Max 70 chars. Curiosity Gap in Hinglish + 1 emoji (🎬🍿😱🔥). "
+        f"First 40 chars = Hindi/Hinglish hook. Last 30 chars = 3 hashtags incl #movieexplainedinhindi\n"
+        f"2. DESCRIPTION:\n"
+        f"   - Line 1: Emotional hook in Hinglish ALL CAPS. No markdown (**).\n"
+        f"   - Line 2-5: Movie trivia or emotional cliffhanger in Hinglish.\n"
+        f"   - Line 6: CTA - Subscribe to BOLTAS CLIPS for more!\n"
+        f"   - EXACTLY 20 trending movie hashtags.\n"
+        f"3. TAGS: 15 semantic tags about movies and Hindi explanations.\n\n"
+        f"Return valid JSON ONLY: {{\"title\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
     )
 
-    user_prompt = f"""Video caption from TikTok: "{original_title}"
-
-Generate YouTube Shorts metadata strictly for BOLTAS CLIPS channel targeting Hindi movie lovers in India.
-
-Rules:
-1. "title": Max 70 chars total. Format: <Hinglish curiosity-gap hook (40 chars)> + 1 emoji (🎬/🍿/😱/🔥) + #shorts #movieclips #boltasclips. Must make viewer STOP scrolling.
-2. "description": Structured as below (plain text, NO markdown asterisks):
-   Line 1: ALL-CAPS emotional Hinglish hook related to the video (e.g. YEH SCENE DEKH KE ROO PADOGE!)
-   Lines 2-6: 4-5 lines of Hinglish movie trivia / emotional cliffhanger building curiosity
-   Line 7: "Subscribe to BOLTAS CLIPS for more! 🔔"
-   Line 8: blank
-   Line 9-onwards: EXACTLY 20 hashtags on separate lines, all starting with #, all relevant to the video topic, mixing: movie name hashtags, genre hashtags, Hindi/Hinglish hashtags, shorts hashtags. MUST include: #shorts #movieclips #boltasclips #movieexplainedinhindi #hindimovie
-3. "tags": Array of EXACTLY 15 strings. Mix: movie title keywords, actor names (if inferable), genre, Hindi movie terms, emotion keywords. No # symbol. Each tag max 30 chars.
-
-Return ONLY this JSON (no extra keys):
-{{"title": "...", "description": "...", "tags": ["...", ...]}}"""
-
-    for attempt in range(3):
-        try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user",   "content": user_prompt}
-                    ],
-                    "response_format": {"type": "json_object"},
-                    "temperature": 0.7,
-                    "max_tokens": 1200,
-                },
-                timeout=30
-            )
-            resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"]
-            # Strip any accidental markdown fences
-            raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-            result = json.loads(raw)
-
-            # Validate all three keys exist and have content
-            assert result.get("title") and result.get("description") and result.get("tags")
-
-            # Enforce tag count
-            tags = result["tags"]
-            if len(tags) < 15:
-                tags += ["bollywood", "hindi movie", "movie clip", "shorts", "boltasclips",
-                         "movieexplained", "hindimovies", "moviescene", "viral", "trending",
-                         "movielovers", "filmclip", "cinemahindi", "desi", "india"]
-                result["tags"] = tags[:15]
-
-            # Ensure description has 20 hashtags
-            desc = result["description"]
-            ht_count = desc.count("\n#") + (1 if desc.lstrip().startswith("#") else 0)
-            # Count lines starting with #
-            ht_lines = [l for l in desc.splitlines() if l.strip().startswith("#")]
-            if len(ht_lines) < 20:
-                extra = [
-                    "#shorts", "#movieclips", "#boltasclips", "#movieexplainedinhindi",
-                    "#hindimovie", "#bollywood", "#viral", "#trending", "#moviescene",
-                    "#cinematichindi", "#filmlovers", "#desicinema", "#india", "#reels",
-                    "#ytshorts", "#movietrivia", "#hindifilm", "#actorscene", "#subscribe",
-                    "#watchnow"
-                ]
-                needed = [h for h in extra if h not in desc]
-                for h in needed:
-                    if len(ht_lines) >= 20:
-                        break
-                    desc += f"\n{h}"
-                    ht_lines.append(h)
-                result["description"] = desc
-
-            log(f"Groq metadata OK (attempt {attempt+1})")
-            return result
-
-        except Exception as e:
-            log(f"Groq attempt {attempt+1} failed: {e}", "WARN")
-            time.sleep(2)
-
-    return None
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
+            },
+            timeout=25
+        )
+        resp.raise_for_status()
+        return json.loads(resp.json()["choices"][0]["message"]["content"])
+    except Exception as e:
+        log(f"Groq failed: {e}", "WARN")
+        return None
 
 def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     ai = generate_ai_metadata(raw_caption) if GROQ_API_KEY else None
@@ -482,52 +423,100 @@ async def playwright_upload(video_path: str, title: str, description: str,
         log("Session OK — logged in!", "INFO")
         await asyncio.sleep(random.uniform(1.0, 2.5))
 
-        # --- Click Create/Upload ---
-        upload_selectors = [
+        # ── Step 1: Click the CREATE button ───────────────────────────────────
+        create_selectors = [
             "button[aria-label='Create']",
             "ytcp-button#create-icon",
+            "[aria-label='CREATE']",
             "#upload-btn",
         ]
-        clicked = False
-        for sel in upload_selectors:
+        for sel in create_selectors:
             if await human_click(page, sel):
-                clicked = True
-                log("Upload button clicked")
+                log("Create button clicked")
+                await asyncio.sleep(random.uniform(1.2, 2.0))
                 break
 
-        await page.goto("https://studio.youtube.com/channel/UC/videos/upload", wait_until="networkidle")
+        # ── Step 2: Click "Upload videos" from the dropdown ───────────────────
+        upload_item_selectors = [
+            "tp-yt-paper-item:has-text('Upload videos')",
+            "yt-formatted-string:has-text('Upload videos')",
+            "#text-item-0",
+            "ytcp-paper-listbox tp-yt-paper-item:first-child",
+        ]
+        for sel in upload_item_selectors:
+            try:
+                await page.wait_for_selector(sel, timeout=5000)
+                await page.click(sel)
+                log("'Upload videos' clicked")
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+                break
+            except:
+                continue
 
-        await asyncio.sleep(random.uniform(1.5, 2.5))
-        # Upload page opened directly; dropdown skipped
-        # --- Attach file ---
-        log("Attaching video file...", "STEP")
-
+        # ── Step 3: Wait for the upload dialog to appear ──────────────────────
         try:
             await page.wait_for_selector(
-                "input[type='file']",
-                state="attached",
-                timeout=15000
+                "ytcp-uploads-dialog, #uploads-dialog, ytcp-uploads-drag-drop",
+                timeout=20000
             )
+            log("Upload dialog open")
+        except:
+            log("Upload dialog not detected — continuing anyway", "WARN")
 
-            await page.locator(
-                "input[type='file']"
-            ).first.set_input_files(video_path)
+        await asyncio.sleep(random.uniform(1.0, 1.8))
 
-            log("File attached!")
+        # ── Step 4: Attach file via expect_file_chooser (THE definitive fix) ──
+        # Never hunt for input[type='file'] — YouTube Studio hides it inside
+        # shadow DOM / display:none.  Instead, register a file-chooser listener
+        # BEFORE clicking SELECT FILES so we capture the native OS dialog event.
+        log("Attaching video file...", "STEP")
 
-        except Exception as e:
-            log(f"File input failed: {e}", "ERR")
+        select_btn_selectors = [
+            "ytcp-button#select-files-button",
+            "button#select-files-button",
+            "ytcp-button:has-text('SELECT FILES')",
+            "ytcp-button:has-text('Select files')",
+            "[aria-label='Select files to upload']",
+        ]
 
+        attached = False
+        for sel in select_btn_selectors:
             try:
-                await page.screenshot(
-                    path="upload_error.png",
-                    full_page=True
-                )
-            except:
-                pass
+                await page.wait_for_selector(sel, state="visible", timeout=8000)
+                async with page.expect_file_chooser(timeout=10000) as fc_info:
+                    await page.click(sel)
+                fc = await fc_info.value
+                await fc.set_files(video_path)
+                attached = True
+                log("File attached via FileChooser ✓")
+                break
+            except Exception as ex:
+                log(f"Selector '{sel}' failed: {ex}", "WARN")
+                continue
 
-            await browser.close()
-            return None
+        if not attached:
+            # Last resort: JS-dispatch a click on whatever button exists
+            try:
+                async with page.expect_file_chooser(timeout=10000) as fc_info:
+                    await page.evaluate("""() => {
+                        const b = document.querySelector('ytcp-button#select-files-button')
+                                  || document.querySelector('[aria-label*=Select]')
+                                  || document.querySelector('ytcp-uploads-drag-drop');
+                        if (b) b.click();
+                    }""")
+                fc = await fc_info.value
+                await fc.set_files(video_path)
+                attached = True
+                log("File attached via JS FileChooser fallback ✓")
+            except Exception as e:
+                log(f"File attach completely failed: {e}", "ERR")
+                try:
+                    await page.screenshot(path="upload_error.png", full_page=True)
+                    log("Screenshot saved → upload_error.png")
+                except:
+                    pass
+                await browser.close()
+                return None
 
         await asyncio.sleep(random.uniform(3.0, 5.0))
 
@@ -580,7 +569,6 @@ async def playwright_upload(video_path: str, title: str, description: str,
 
         # --- Next x3  (Details → Video elements → Checks → Visibility) ---
         for step in range(3):
-            # Close any open autocomplete / suggestion dropdown first
             try:
                 await page.keyboard.press("Escape")
                 await asyncio.sleep(0.5)
@@ -588,14 +576,8 @@ async def playwright_upload(video_path: str, title: str, description: str,
                 pass
 
             clicked_next = False
-            next_selectors = [
-                "ytcp-button#next-button",
-                "#next-button",
-                "div#next-button",
-                "ytcp-button[id='next-button']",
-                "button[aria-label='Next']",
-            ]
-            for sel in next_selectors:
+            for sel in ["ytcp-button#next-button", "#next-button",
+                        "div#next-button", "button[aria-label='Next']"]:
                 try:
                     btn = await page.wait_for_selector(sel, state="visible", timeout=12000)
                     await btn.scroll_into_view_if_needed()
@@ -608,20 +590,14 @@ async def playwright_upload(video_path: str, title: str, description: str,
                     continue
 
             if not clicked_next:
-                # JS fallback
                 await page.evaluate("""() => {
-                    const b = document.querySelector('ytcp-button#next-button') ||
-                              document.querySelector('#next-button');
+                    const b = document.querySelector('ytcp-button#next-button')
+                              || document.querySelector('#next-button');
                     if (b) b.click();
                 }""")
                 log(f"Next step {step+1}/3 via JS fallback")
 
             await asyncio.sleep(random.uniform(2.5, 3.5))
-
-            try:
-                await page.screenshot(path=f"step_{step+1}_after_next.png")
-            except:
-                pass
 
         # --- Visibility ---
         privacy_map = {"public": "PUBLIC", "unlisted": "UNLISTED", "private": "PRIVATE"}

@@ -36,23 +36,21 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
-      - name: Run uploader with Retry
+      - name: Run BOLTAS CLIPS uploader
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 20
+          timeout_minutes: 25
           max_attempts: 3
           retry_on: error
           command: python tiktok_to_youtube_ch2.py
         env:
-          TIKTOK_PROFILE_ID:    ${{ secrets.TIKTOK_PROFILE_ID }}
-          CLIENT_SECRETS_JSON:  ${{ secrets.CLIENT_SECRETS_JSON }}
-          TOKEN_PICKLE_B64_CH2: ${{ secrets.TOKEN_PICKLE_B64_CH2 }}
-          YT_COOKIES_B64:       ${{ secrets.YT_COOKIES_B64 }}
-          GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
-          WATERMARK_TEXT:       ${{ secrets.WATERMARK_TEXT_CH2 || '@BOLTAS CLIPS' }}
-          YT_PRIVACY:           public
-          YT_CATEGORY:          "24"
-          CRON_SCHEDULE:        ${{ github.event.schedule }}
+          TIKTOK_PROFILE_ID: ${{ secrets.TIKTOK_PROFILE_ID }}
+          YT_COOKIES_B64:    ${{ secrets.YT_COOKIES_B64 }}
+          GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+          WATERMARK_TEXT:    ${{ secrets.WATERMARK_TEXT || '@BOLTAS CLIPS' }}
+          YT_PRIVACY:        public
+          YT_CATEGORY:       "24"
+          CRON_SCHEDULE:     ${{ github.event.schedule }}
 
       - name: Commit & Push history
         run: |
@@ -71,7 +69,7 @@ jobs:
               exit 0
             fi
 
-            git commit -m "Update upload history channel 2 [skip ci]"
+            git commit -m "Update BOLTAS CLIPS history [skip ci]"
 
             if git push origin main; then
               echo "Push successful!"

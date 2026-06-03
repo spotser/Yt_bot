@@ -208,7 +208,7 @@ def download_video():
 
 def process_video(input_path: Path):
     output_path = PROCESSED_DIR / f"processed_{input_path.name}"
-    log("Applying 11-Layer DNA fingerprint change...", "STEP")
+    log("Applying DNA fingerprint change...", "STEP")
 
     d = {
         "pts":        round(random.uniform(0.98, 1.02), 4),
@@ -240,6 +240,7 @@ def process_video(input_path: Path):
         f"shadowcolor=black@0.5:shadowx=2:shadowy=2"
     )
 
+    # 8-Layer DNA Signature Change Filter Chain (optimized for speed by removing noise/vignette/unsharp)
     v_filters = [
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         f"setpts={d['pts']}*PTS",
@@ -250,9 +251,6 @@ def process_video(input_path: Path):
         ),
         f"hue=h={d['hue']}",
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",
-        "vignette=PI/4+0.1*sin(t)",
-        "noise=c0s=3:c0f=t+u",
-        "unsharp=3:3:1.2:3:3:0.0",
         f"fps={d['fps']}",
         watermark,
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -344,8 +342,8 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 # PLAYWRIGHT HELPERS
 # ==========================================
 
-async def human_type(page, selector: str, text: str):
-    await page.click(selector)
+async def human_type(page, selector: str, text: str, timeout: int = 5000):
+    await page.click(selector, timeout=timeout)
     await asyncio.sleep(random.uniform(0.3, 0.7))
     await page.keyboard.press("Control+a")
     await asyncio.sleep(random.uniform(0.1, 0.3))
@@ -406,8 +404,8 @@ async def dismiss_overlay(page) -> None:
 
 async def wait_for_done_button(page, max_wait: int = 600) -> bool:
     """
-    Poll #done-button via JS eval (immune to overlay occlusion).
-    Returns True when button is enabled and ready, False on timeout.
+    Poll #done-button and progress labels.
+    Returns True when upload is complete (or processing has started), False on timeout.
     """
     waited = 0
     while waited < max_wait:
@@ -425,16 +423,23 @@ async def wait_for_done_button(page, max_wait: int = 600) -> bool:
                 }
             """)
             if state == "ready":
+                log("Done/Publish button is enabled and ready.")
                 return True
         except:
             pass
 
-        # Show progress text if available
+        # Check progress text
         try:
             prog = await page.query_selector(".progress-label")
             if prog:
-                txt = await prog.inner_text()
-                print(f"  ⏳ {txt.strip()}", end="\r", flush=True)
+                txt = (await prog.inner_text()).strip()
+                print(f"  ⏳ {txt}", end="\r", flush=True)
+                
+                # If text contains "Upload complete", "Processing", or "Checks", upload is finished!
+                txt_lower = txt.lower()
+                if any(phrase in txt_lower for phrase in ["upload complete", "processing", "checks"]):
+                    log(f"Upload complete detected via progress label: '{txt}'")
+                    return True
         except:
             pass
 
@@ -613,20 +618,37 @@ async def playwright_upload(
         await asyncio.sleep(random.uniform(3.0, 5.0))
 
         # ── 4. Title ─────────────────────────────────────────────────────────
+        # Wait for Details tab to load (specifically title container)
+        log("Waiting for Details editor to load...", "STEP")
+        try:
+            await page.wait_for_selector(
+                "#title-textarea #textbox, #title-container #textbox, ytcp-social-suggestions-textbox #textbox", 
+                state="visible", 
+                timeout=30000
+            )
+            log("Details editor loaded")
+        except Exception as load_err:
+            log(f"Details editor loading timed out: {load_err}", "WARN")
+            await safe_screenshot(page, "error_details_load.png")
+
         title_selectors = [
-            "#textbox[aria-label='Add a title that describes your video']",
             "#title-textarea #textbox",
+            "#title-container #textbox",
             "ytcp-social-suggestions-textbox #textbox",
+            "#textbox[aria-label*='Title' i]",
+            "#textbox[aria-label*='title' i]",
         ]
         title_filled = False
         for sel in title_selectors:
             try:
-                await page.wait_for_selector(sel, timeout=8000)
-                await human_type(page, sel, title[:100])
-                log("Title filled")
+                # Use a short timeout of 5000ms for finding and typing
+                await page.wait_for_selector(sel, state="visible", timeout=5000)
+                await human_type(page, sel, title[:100], timeout=5000)
+                log(f"Title filled using: {sel}")
                 title_filled = True
                 break
-            except:
+            except Exception as title_err:
+                log(f"Failed to fill title with selector '{sel}': {title_err}", "WARN")
                 continue
         if not title_filled:
             log("Title field not found", "WARN")
@@ -635,16 +657,21 @@ async def playwright_upload(
 
         # ── 5. Description ───────────────────────────────────────────────────
         desc_selectors = [
-            "#textbox[aria-label='Tell viewers about your video']",
             "#description-textarea #textbox",
+            "#description-container #textbox",
+            "#textbox[aria-label*='Description' i]",
+            "#textbox[aria-label*='description' i]",
         ]
+        desc_filled = False
         for sel in desc_selectors:
             try:
-                await page.wait_for_selector(sel, timeout=5000)
-                await human_type(page, sel, description[:4500])
-                log("Description filled")
+                await page.wait_for_selector(sel, state="visible", timeout=5000)
+                await human_type(page, sel, description[:4500], timeout=5000)
+                log(f"Description filled using: {sel}")
+                desc_filled = True
                 break
-            except:
+            except Exception as desc_err:
+                log(f"Failed to fill description with selector '{sel}': {desc_err}", "WARN")
                 continue
 
         await asyncio.sleep(random.uniform(0.8, 1.5))

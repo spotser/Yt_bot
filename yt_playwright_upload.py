@@ -1,4 +1,5 @@
 import os
+import time
 import re
 import sys
 import json
@@ -304,25 +305,28 @@ def generate_ai_metadata(original_title: str):
         f'Return valid JSON ONLY: {{"title":"...","description":"...","tags":[...]}}'
     )
 
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"},
-            },
-            timeout=25,
-        )
-        resp.raise_for_status()
-        return json.loads(resp.json()["choices"][0]["message"]["content"])
-    except Exception as e:
-        log(f"Groq failed: {e}", "WARN")
-        return None
+    for attempt in range(1, 4):
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=25,
+            )
+            resp.raise_for_status()
+            return json.loads(resp.json()["choices"][0]["message"]["content"])
+        except Exception as e:
+            log(f"Groq attempt {attempt}/3 failed: {e}", "WARN")
+            if attempt < 3:
+                time.sleep(3)
+    return None
 
 def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     ai = generate_ai_metadata(raw_caption) if GROQ_API_KEY else None
@@ -821,10 +825,18 @@ def main():
     validate_env()
     setup_dirs()
 
-    # Step 1: Download
-    result = download_video()
+    # Step 1: Download with Retries
+    result = None
+    for attempt in range(1, 4):
+        log(f"Attempting video download from TikTok (Attempt {attempt}/3)...", "STEP")
+        result = download_video()
+        if result:
+            break
+        log("Download failed, retrying in 10 seconds...", "WARN")
+        time.sleep(10)
+
     if not result:
-        log("No new video to upload. Exiting.")
+        log("No new video to upload (or all download attempts failed). Exiting.")
         sys.exit(0)
 
     v_file, raw_caption = result
@@ -837,27 +849,42 @@ def main():
         log("Duplicate video detected — skipping.", "WARN")
         sys.exit(0)
 
-    # Step 3: Process (DNA change)
-    processed = process_video(v_file)
+    # Step 3: Process (DNA change) with Retries
+    processed = None
+    for attempt in range(1, 4):
+        log(f"Processing video using FFmpeg (Attempt {attempt}/3)...", "STEP")
+        processed = process_video(v_file)
+        if processed:
+            break
+        log("FFmpeg video processing failed, retrying in 5 seconds...", "WARN")
+        time.sleep(5)
+
     if not processed:
-        log("Video processing failed.", "ERR")
+        log("Video processing failed after 3 attempts.", "ERR")
         sys.exit(1)
 
     # Step 4: Metadata
     meta = get_final_metadata(raw_caption, vid_id)
     log(f"Title: {meta['title']}")
 
-    # Step 5: Upload via Playwright
-    yt_id = upload_video_sync(
-        video_path=str(processed),
-        title=meta["title"],
-        description=meta["description"],
-        tags=meta["tags"],
-        privacy=PRIVACY,
-    )
+    # Step 5: Upload via Playwright with Retries
+    yt_id = None
+    for attempt in range(1, 4):
+        log(f"Attempting YouTube upload via Playwright (Attempt {attempt}/3)...", "STEP")
+        yt_id = upload_video_sync(
+            video_path=str(processed),
+            title=meta["title"],
+            description=meta["description"],
+            tags=meta["tags"],
+            privacy=PRIVACY,
+        )
+        if yt_id:
+            break
+        log("Playwright upload attempt failed. Retrying in 15 seconds...", "WARN")
+        time.sleep(15)
 
     if not yt_id:
-        log("Upload failed.", "ERR")
+        log("Upload failed after 3 attempts.", "ERR")
         sys.exit(1)
 
     # Step 6: Save history

@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-"""
-TikTok (yt-dlp Profile Scraper) → YouTube Shorts (BOLTAS CLIPS)
-- Fetches videos from a specific TikTok profile using yt-dlp
-- Smart Upscale: 1080x1920 with padding (no stretching)
-- Metadata: Auto-extracts title and generates perfect Hinglish SEO using Groq AI
-- Watermark: Overlaying watermark text only (no kinetic hook text)
-- Upload: Playwright browser-based (human-like, no API)
-- GitHub Actions Ready: Uses env secrets
-"""
-
 import os
 import re
 import sys
@@ -16,7 +5,6 @@ import json
 import base64
 import subprocess
 import requests
-import time
 import random
 import hashlib
 import asyncio
@@ -58,17 +46,20 @@ def run_cmd(cmd):
     return result.stdout.strip()
 
 def escape_ffmpeg_text(text: str) -> str:
-    if not text: return ""
+    if not text:
+        return ""
     text = text.replace("'", "").replace(":", "")
     text = text.replace("\\", "\\\\").replace(",", "\\,")
-    return text.encode('ascii', 'ignore').decode('ascii').strip()
+    return text.encode("ascii", "ignore").decode("ascii").strip()
 
 def setup_dirs():
     for d in [DOWNLOAD_DIR, PROCESSED_DIR]:
         if d.exists():
             for f in d.glob("*"):
-                try: f.unlink()
-                except: pass
+                try:
+                    f.unlink()
+                except:
+                    pass
         d.mkdir(parents=True, exist_ok=True)
 
 def validate_env():
@@ -88,19 +79,17 @@ def load_cookies():
     try:
         decoded = base64.b64decode(COOKIES_B64).decode("utf-8")
         cookies = json.loads(decoded)
-        
-        # Fix sameSite values for Playwright
+
         for cookie in cookies:
             same_site = cookie.get("sameSite", "")
             if same_site not in ["Strict", "Lax", "None"]:
                 cookie["sameSite"] = "None"
-            # Remove fields Playwright doesn't accept
             cookie.pop("hostOnly", None)
             cookie.pop("storeId", None)
             cookie.pop("firstPartyDomain", None)
             cookie.pop("partitionKey", None)
             cookie.pop("session", None)
-        
+
         COOKIES_PATH.write_text(json.dumps(cookies), encoding="utf-8")
         log(f"Loaded {len(cookies)} YouTube cookies")
         return cookies
@@ -120,8 +109,10 @@ def load_history():
         line = line.strip()
         if line and not line.startswith("#"):
             parts = [p.strip() for p in line.split("|")]
-            if len(parts) >= 1: ids.add(parts[0])
-            if len(parts) >= 4: titles.add(parts[3].lower())
+            if len(parts) >= 1:
+                ids.add(parts[0])
+            if len(parts) >= 4:
+                titles.add(parts[3].lower())
     return ids, titles
 
 def save_history(tiktok_id: str, yt_id: str, title: str, file_hash: str = ""):
@@ -169,7 +160,7 @@ def download_video():
         "--force-ipv4",
         "--max-downloads", "1",
         "--write-info-json",
-        "-o", str(DOWNLOAD_DIR / "%(id)s.%(ext)s")
+        "-o", str(DOWNLOAD_DIR / "%(id)s.%(ext)s"),
     ]
 
     try:
@@ -187,7 +178,7 @@ def download_video():
         video_files.extend(DOWNLOAD_DIR.glob(ext))
 
     if not video_files:
-        log("No new videos found in profile", "INFO")
+        log("No new videos found in profile")
         return None
 
     v_file = video_files[0]
@@ -199,11 +190,15 @@ def download_video():
         try:
             with open(info_json, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-                raw_caption = meta.get("title") or meta.get("description") or "New Movie Clip"
+                raw_caption = (
+                    meta.get("title") or meta.get("description") or "New Movie Clip"
+                )
         except:
             pass
-        try: info_json.unlink()
-        except: pass
+        try:
+            info_json.unlink()
+        except:
+            pass
 
     return v_file, raw_caption
 
@@ -211,7 +206,7 @@ def download_video():
 # VIDEO PROCESSING (DNA CHANGE)
 # ==========================================
 
-def process_video(input_path: Path) -> Path | None:
+def process_video(input_path: Path):
     output_path = PROCESSED_DIR / f"processed_{input_path.name}"
     log("Applying 11-Layer DNA fingerprint change...", "STEP")
 
@@ -232,7 +227,7 @@ def process_video(input_path: Path) -> Path | None:
     possible_fonts = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "C:\\Windows\\Fonts\\arialbd.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf"
+        "C:\\Windows\\Fonts\\arial.ttf",
     ]
     font_path = next((f for f in possible_fonts if os.path.exists(f)), "")
     font_config = f"fontfile='{font_path}':" if font_path else ""
@@ -249,7 +244,10 @@ def process_video(input_path: Path) -> Path | None:
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         f"setpts={d['pts']}*PTS",
         f"crop=iw*{d['cw']}:ih*{d['cw']}:iw*{d['cx']}:ih*{d['cx']}",
-        f"eq=brightness={d['brightness']}:contrast={d['contrast']}:saturation={d['saturation']}:gamma=1.05",
+        (
+            f"eq=brightness={d['brightness']}:contrast={d['contrast']}"
+            f":saturation={d['saturation']}:gamma=1.05"
+        ),
         f"hue=h={d['hue']}",
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",
         "vignette=PI/4+0.1*sin(t)",
@@ -257,11 +255,15 @@ def process_video(input_path: Path) -> Path | None:
         "unsharp=3:3:1.2:3:3:0.0",
         f"fps={d['fps']}",
         watermark,
-        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
+        "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
     ]
 
     vf = ",".join([f for f in v_filters if f])
-    af = f"asetrate=44100*{d['pitch']},atempo={d['pts']}/{d['pitch']},aresample=44100"
+    af = (
+        f"asetrate=44100*{d['pitch']},"
+        f"atempo={d['pts']}/{d['pitch']},"
+        f"aresample=44100"
+    )
 
     cmd = (
         f'ffmpeg -y -i "{input_path}" '
@@ -293,26 +295,30 @@ def generate_ai_metadata(original_title: str):
         f"Video Caption: {original_title}\n\n"
         f"Generate ULTRA-PERFECT SEO metadata in Hinglish/Hindi for 2026 Algorithm:\n"
         f"1. TITLE: Max 70 chars. Curiosity Gap in Hinglish + 1 emoji (🎬🍿😱🔥). "
-        f"First 40 chars = Hindi/Hinglish hook. Last 30 chars = 3 hashtags incl #movieexplainedinhindi\n"
+        f"First 40 chars = Hindi/Hinglish hook. Last 30 chars = 3 hashtags "
+        f"incl #movieexplainedinhindi\n"
         f"2. DESCRIPTION:\n"
         f"   - Line 1: Emotional hook in Hinglish ALL CAPS. No markdown (**).\n"
         f"   - Line 2-5: Movie trivia or emotional cliffhanger in Hinglish.\n"
         f"   - Line 6: CTA - Subscribe to BOLTAS CLIPS for more!\n"
         f"   - EXACTLY 20 trending movie hashtags.\n"
         f"3. TAGS: 15 semantic tags about movies and Hindi explanations.\n\n"
-        f"Return valid JSON ONLY: {{\"title\": \"...\", \"description\": \"...\", \"tags\": [...]}}"
+        f'Return valid JSON ONLY: {{"title":"...","description":"...","tags":[...]}}'
     )
 
     try:
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
             json={
                 "model": "llama-3.1-8b-instant",
                 "messages": [{"role": "user", "content": prompt}],
-                "response_format": {"type": "json_object"}
+                "response_format": {"type": "json_object"},
             },
-            timeout=25
+            timeout=25,
         )
         resp.raise_for_status()
         return json.loads(resp.json()["choices"][0]["message"]["content"])
@@ -324,22 +330,21 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     ai = generate_ai_metadata(raw_caption) if GROQ_API_KEY else None
     if ai:
         return {
-            "title": ai.get("title", raw_caption[:70]),
+            "title":       ai.get("title", raw_caption[:70]),
             "description": ai.get("description", ""),
-            "tags": ai.get("tags", [])
+            "tags":        ai.get("tags", []),
         }
-    # Fallback
     return {
-        "title": raw_caption[:70],
+        "title":       raw_caption[:70],
         "description": f"{raw_caption}\n\n#shorts #movieclips #boltasclips",
-        "tags": ["shorts", "movieclips", "bollywood", "hollywood", "hindi"]
+        "tags":        ["shorts", "movieclips", "bollywood", "hollywood", "hindi"],
     }
 
 # ==========================================
-# HUMAN BEHAVIOR HELPERS
+# PLAYWRIGHT HELPERS
 # ==========================================
 
-async def human_type(page, selector, text):
+async def human_type(page, selector: str, text: str):
     await page.click(selector)
     await asyncio.sleep(random.uniform(0.3, 0.7))
     await page.keyboard.press("Control+a")
@@ -352,11 +357,12 @@ async def human_type(page, selector, text):
         if random.random() < 0.05:
             await asyncio.sleep(random.uniform(0.3, 0.8))
 
-async def human_click(page, selector):
+async def human_click(page, selector: str) -> bool:
     try:
         element = await page.wait_for_selector(selector, timeout=8000)
         box = await element.bounding_box()
-        if not box: return False
+        if not box:
+            return False
         x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)
         y = box["y"] + random.uniform(box["height"] * 0.3, box["height"] * 0.7)
         await page.mouse.move(x + random.randint(-30, 30), y + random.randint(-20, 20))
@@ -368,12 +374,99 @@ async def human_click(page, selector):
     except:
         return False
 
+async def js_click(element) -> None:
+    """
+    Fire click via JS — bypasses tp-yt-iron-overlay-backdrop pointer interception.
+    Use everywhere the backdrop may be open (Next, Privacy, Publish buttons).
+    """
+    await element.evaluate("el => el.click()")
+
+async def dismiss_overlay(page) -> None:
+    """
+    Root cause of ALL 3 'Next' button timeouts in the original script:
+    <tp-yt-iron-overlay-backdrop class="opened"> was visible+stable but
+    intercepting every pointer event. Press Escape to close it first.
+    """
+    try:
+        overlay = await page.query_selector("tp-yt-iron-overlay-backdrop.opened")
+        if overlay:
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.6)
+            try:
+                await page.wait_for_selector(
+                    "tp-yt-iron-overlay-backdrop.opened",
+                    state="hidden",
+                    timeout=4000,
+                )
+                log("Overlay dismissed")
+            except:
+                pass  # already gone or Escape had no effect — proceed anyway
+    except:
+        pass
+
+async def wait_for_done_button(page, max_wait: int = 600) -> bool:
+    """
+    Poll #done-button via JS eval (immune to overlay occlusion).
+    Returns True when button is enabled and ready, False on timeout.
+    """
+    waited = 0
+    while waited < max_wait:
+        try:
+            state = await page.evaluate("""
+                () => {
+                    const btn =
+                        document.querySelector('#done-button') ||
+                        document.querySelector('ytcp-button#done-button');
+                    if (!btn) return 'not_found';
+                    if (btn.hasAttribute('disabled')) return 'disabled';
+                    if (window.getComputedStyle(btn).pointerEvents === 'none')
+                        return 'disabled';
+                    return 'ready';
+                }
+            """)
+            if state == "ready":
+                return True
+        except:
+            pass
+
+        # Show progress text if available
+        try:
+            prog = await page.query_selector(".progress-label")
+            if prog:
+                txt = await prog.inner_text()
+                print(f"  ⏳ {txt.strip()}", end="\r", flush=True)
+        except:
+            pass
+
+        await asyncio.sleep(5)
+        waited += 5
+
+        # Keep session alive
+        if waited % 30 == 0:
+            await page.mouse.wheel(0, random.randint(30, 80))
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await page.mouse.wheel(0, -random.randint(30, 80))
+
+    return False
+
+async def safe_screenshot(page, name: str):
+    try:
+        await page.screenshot(path=name, full_page=True)
+        log(f"Screenshot saved: {name}", "WARN")
+    except:
+        pass
+
 # ==========================================
 # PLAYWRIGHT UPLOAD (HUMAN-LIKE)
 # ==========================================
 
-async def playwright_upload(video_path: str, title: str, description: str,
-                             tags: list, privacy: str = "public") -> str | None:
+async def playwright_upload(
+    video_path: str,
+    title: str,
+    description: str,
+    tags: list,
+    privacy: str = "public",
+):
     from playwright.async_api import async_playwright
 
     cookies = load_cookies()
@@ -389,20 +482,24 @@ async def playwright_upload(video_path: str, title: str, description: str,
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--window-size=1280,720",
-            ]
+            ],
         )
 
         ctx = await browser.new_context(
             viewport={"width": 1280, "height": 720},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
             locale="en-US",
             timezone_id="Asia/Kolkata",
         )
 
-        # Stealth — remove webdriver flag
+        # Stealth patches
         await ctx.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en','hi'] });
             window.chrome = { runtime: {} };
         """)
@@ -410,7 +507,7 @@ async def playwright_upload(video_path: str, title: str, description: str,
         await ctx.add_cookies(cookies)
         page = await ctx.new_page()
 
-        # --- Verify login ---
+        # ── 1. Verify login ──────────────────────────────────────────────────
         log("Verifying YouTube session...", "STEP")
         await page.goto("https://studio.youtube.com", wait_until="domcontentloaded")
         await asyncio.sleep(random.uniform(2.5, 4.0))
@@ -420,10 +517,10 @@ async def playwright_upload(video_path: str, title: str, description: str,
             await browser.close()
             return None
 
-        log("Session OK — logged in!", "INFO")
+        log("Session OK — logged in!")
         await asyncio.sleep(random.uniform(1.0, 2.5))
 
-        # --- Click Create/Upload ---
+        # ── 2. Open upload dialog ────────────────────────────────────────────
         upload_selectors = [
             "button[aria-label='Create']",
             "ytcp-button#create-icon",
@@ -437,69 +534,62 @@ async def playwright_upload(video_path: str, title: str, description: str,
                 break
 
         if not clicked:
-            await page.goto("https://www.youtube.com/upload", wait_until="domcontentloaded")
+            log("Create button not found — navigating directly", "WARN")
+            await page.goto(
+                "https://www.youtube.com/upload", wait_until="domcontentloaded"
+            )
 
         await asyncio.sleep(random.uniform(1.5, 2.5))
 
-        # Handle dropdown "Upload videos"
+        # Handle "Upload videos" dropdown item
         try:
-            opt = await page.wait_for_selector("tp-yt-paper-item:has-text('Upload videos')", timeout=4000)
+            opt = await page.wait_for_selector(
+                "tp-yt-paper-item:has-text('Upload videos')", timeout=4000
+            )
             await asyncio.sleep(random.uniform(0.5, 1.0))
             await opt.click()
             await asyncio.sleep(random.uniform(1.0, 2.0))
         except:
             pass
-        # --- Attach file ---
-        log("Attaching video file...", "STEP")
 
+        # ── 3. Attach file ───────────────────────────────────────────────────
+        log("Attaching video file...", "STEP")
         try:
             await page.wait_for_selector(
-                "input[type='file']",
-                state="attached",
-                timeout=15000
+                "input[type='file']", state="attached", timeout=15000
             )
-
-            await page.locator(
-                "input[type='file']"
-            ).first.set_input_files(video_path)
-
+            await page.locator("input[type='file']").first.set_input_files(video_path)
             log("File attached!")
-
         except Exception as e:
             log(f"File input failed: {e}", "ERR")
-
-            try:
-                await page.screenshot(
-                    path="upload_error.png",
-                    full_page=True
-                )
-            except:
-                pass
-
+            await safe_screenshot(page, "error_file_attach.png")
             await browser.close()
             return None
 
         await asyncio.sleep(random.uniform(3.0, 5.0))
 
-
-        # --- Title ---
+        # ── 4. Title ─────────────────────────────────────────────────────────
         title_selectors = [
             "#textbox[aria-label='Add a title that describes your video']",
             "#title-textarea #textbox",
             "ytcp-social-suggestions-textbox #textbox",
         ]
+        title_filled = False
         for sel in title_selectors:
             try:
                 await page.wait_for_selector(sel, timeout=8000)
                 await human_type(page, sel, title[:100])
                 log("Title filled")
+                title_filled = True
                 break
             except:
                 continue
+        if not title_filled:
+            log("Title field not found", "WARN")
 
         await asyncio.sleep(random.uniform(0.8, 1.5))
 
-        # --- Description ---
+        # ── 5. Description ───────────────────────────────────────────────────
         desc_selectors = [
             "#textbox[aria-label='Tell viewers about your video']",
             "#description-textarea #textbox",
@@ -515,85 +605,86 @@ async def playwright_upload(video_path: str, title: str, description: str,
 
         await asyncio.sleep(random.uniform(0.8, 1.5))
 
-        # --- Not for kids ---
+        # ── 6. Not for kids ──────────────────────────────────────────────────
         try:
             nfk = await page.wait_for_selector(
                 "#radioLabel:has-text('No, it\\'s not made for kids')", timeout=5000
             )
             await asyncio.sleep(random.uniform(0.5, 1.0))
-            await nfk.click()
+            await js_click(nfk)
             log("Audience set")
         except:
             pass
 
-        await asyncio.sleep(random.uniform(0.5, 1.0))
+        await asyncio.sleep(random.uniform(0.8, 1.5))
 
-        # --- Next x3 ---
+        # ── 7. Next × 3 ──────────────────────────────────────────────────────
+        # FIX: Original timed out on all 3 clicks because the overlay was
+        # intercepting pointer events. Solution: dismiss_overlay() then js_click().
         for step in range(3):
             try:
+                await dismiss_overlay(page)
                 btn = await page.wait_for_selector(
-                    "#next-button, ytcp-button#next-button", timeout=8000
+                    "#next-button, ytcp-button#next-button",
+                    state="visible",
+                    timeout=15000,
                 )
                 await asyncio.sleep(random.uniform(1.0, 2.0))
-                await btn.click()
-                log(f"Step {step+1}/3")
-                await asyncio.sleep(random.uniform(1.5, 2.5))
+                await js_click(btn)
+                log(f"Next {step + 1}/3")
+                await asyncio.sleep(random.uniform(2.5, 4.0))
             except Exception as e:
-                log(f"Next step {step+1}: {e}", "WARN")
+                log(f"Next step {step + 1} failed: {e}", "WARN")
+                await safe_screenshot(page, f"error_next_step_{step + 1}.png")
 
-        # --- Visibility ---
+        # ── 8. Visibility / Privacy ──────────────────────────────────────────
+        # FIX: dismiss overlay + js_click
         privacy_map = {"public": "PUBLIC", "unlisted": "UNLISTED", "private": "PRIVATE"}
         p_val = privacy_map.get(privacy.lower(), "PUBLIC")
         try:
+            await dismiss_overlay(page)
             radio = await page.wait_for_selector(
-                f"tp-yt-paper-radio-button[name='{p_val}']", timeout=8000
+                f"tp-yt-paper-radio-button[name='{p_val}']", timeout=10000
             )
             await asyncio.sleep(random.uniform(0.8, 1.5))
-            await radio.click()
-            log(f"Visibility: {p_val}")
+            await js_click(radio)
+            log(f"Visibility set: {p_val}")
         except:
             log("Privacy selector not found — defaulting Public", "WARN")
 
         await asyncio.sleep(random.uniform(1.0, 2.0))
 
-        # --- Wait for upload complete ---
+        # ── 9. Wait for upload to finish ─────────────────────────────────────
+        # FIX: JS eval polls button state (bypasses overlay occlusion).
+        # max_wait raised 300 → 600 s for large files / slow CI runners.
         log("Waiting for upload to finish...", "STEP")
-        max_wait = 300
-        waited = 0
-        while waited < max_wait:
-            try:
-                btn = await page.query_selector("#done-button, ytcp-button#done-button")
-                if btn and await btn.is_enabled():
-                    log("Upload complete — publishing!")
-                    break
-            except:
-                pass
-            try:
-                prog = await page.query_selector(".progress-label")
-                if prog:
-                    txt = await prog.inner_text()
-                    print(f"  ⏳ {txt.strip()}", end="\r", flush=True)
-            except:
-                pass
-            await asyncio.sleep(5)
-            waited += 5
-            if waited % 30 == 0:
-                await page.mouse.wheel(0, random.randint(30, 80))
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-                await page.mouse.wheel(0, -random.randint(30, 80))
+        upload_done = await wait_for_done_button(page, max_wait=600)
 
-        # --- Publish ---
+        if not upload_done:
+            log("Upload timed out after 600s", "ERR")
+            await safe_screenshot(page, "error_upload_timeout.png")
+            await browser.close()
+            return None
+
+        log("Upload complete — publishing!")
+
+        # ── 10. Publish ──────────────────────────────────────────────────────
+        # FIX: dismiss overlay + js_click (same root cause as Next buttons)
+        await dismiss_overlay(page)
         publish_selectors = [
             "#done-button",
             "ytcp-button#done-button",
+            "ytcp-button[aria-label='Publish']",
             "[aria-label='Publish']",
         ]
         published = False
         for sel in publish_selectors:
             try:
-                btn = await page.wait_for_selector(sel, timeout=5000)
+                btn = await page.wait_for_selector(
+                    sel, state="visible", timeout=8000
+                )
                 await asyncio.sleep(random.uniform(0.8, 1.5))
-                await btn.click()
+                await js_click(btn)
                 published = True
                 log("Published!")
                 break
@@ -602,18 +693,19 @@ async def playwright_upload(video_path: str, title: str, description: str,
 
         if not published:
             log("Publish button not found", "ERR")
+            await safe_screenshot(page, "error_publish.png")
             await browser.close()
             return None
 
         await asyncio.sleep(random.uniform(3.0, 5.0))
 
-        # Get video URL/ID
+        # ── 11. Capture video ID ─────────────────────────────────────────────
         yt_id = "uploaded"
         try:
-            link = await page.wait_for_selector("a.ytcp-video-info", timeout=8000)
+            link = await page.wait_for_selector("a.ytcp-video-info", timeout=10000)
             href = await link.get_attribute("href")
             if href:
-                match = re.search(r'v=([a-zA-Z0-9_-]+)', href)
+                match = re.search(r"v=([a-zA-Z0-9_-]+)", href)
                 if match:
                     yt_id = match.group(1)
                     log(f"Video live: https://youtube.com/watch?v={yt_id}")
@@ -624,9 +716,17 @@ async def playwright_upload(video_path: str, title: str, description: str,
         await browser.close()
         return yt_id
 
-def upload_video_sync(video_path: str, title: str, description: str,
-                       tags: list, privacy: str = "public") -> str | None:
-    return asyncio.run(playwright_upload(video_path, title, description, tags, privacy))
+
+def upload_video_sync(
+    video_path: str,
+    title: str,
+    description: str,
+    tags: list,
+    privacy: str = "public",
+):
+    return asyncio.run(
+        playwright_upload(video_path, title, description, tags, privacy)
+    )
 
 # ==========================================
 # MAIN
@@ -641,7 +741,7 @@ def main():
     # Step 1: Download
     result = download_video()
     if not result:
-        log("No new video to upload. Exiting.", "INFO")
+        log("No new video to upload. Exiting.")
         sys.exit(0)
 
     v_file, raw_caption = result
@@ -680,6 +780,7 @@ def main():
     # Step 6: Save history
     save_history(vid_id, yt_id, meta["title"], file_hash)
     log("=== Pipeline complete! ===")
+
 
 if __name__ == "__main__":
     main()

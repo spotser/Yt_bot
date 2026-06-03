@@ -1,5 +1,15 @@
+#!/usr/bin/env python3
+"""
+TikTok (yt-dlp Profile Scraper) → YouTube Shorts (BOLTAS CLIPS)
+- Fetches videos from a specific TikTok profile using yt-dlp
+- Smart Upscale: 1080x1920 with padding (no stretching)
+- Metadata: Auto-extracts title and generates perfect Hinglish SEO using Groq AI
+- Watermark: Overlaying watermark text only (no kinetic hook text)
+- Upload: Playwright browser-based (human-like, no API)
+- GitHub Actions Ready: Uses env secrets
+"""
+
 import os
-import time
 import re
 import sys
 import json
@@ -78,21 +88,7 @@ def validate_env():
 def load_cookies():
     COOKIES_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        raw_b64 = COOKIES_B64.strip()
-        # Strip BOM and whitespace from the base64 string
-        raw_b64 = raw_b64.lstrip("\ufeff").strip()
-        decoded = base64.b64decode(raw_b64).decode("utf-8").strip()
-        # Strip UTF-8 BOM if present after decoding
-        decoded = decoded.lstrip("\ufeff").strip()
-
-        # Handle double base64 encoding (if decoded is still base64)
-        if decoded and decoded[0] not in ('[', '{'):
-            try:
-                decoded = base64.b64decode(decoded).decode("utf-8").strip()
-                decoded = decoded.lstrip("\ufeff").strip()
-            except Exception:
-                pass
-
+        decoded = base64.b64decode(COOKIES_B64).decode("utf-8")
         cookies = json.loads(decoded)
 
         for cookie in cookies:
@@ -109,14 +105,7 @@ def load_cookies():
         log(f"Loaded {len(cookies)} YouTube cookies")
         return cookies
     except Exception as e:
-        # Debug: show what was actually received
-        preview = ""
-        try:
-            raw = base64.b64decode(COOKIES_B64.strip()).decode("utf-8", errors="replace")
-            preview = repr(raw[:80])
-        except Exception:
-            preview = repr(COOKIES_B64[:80]) if COOKIES_B64 else "(empty)"
-        log(f"Cookie decode failed: {e} | Preview: {preview}", "ERR")
+        log(f"Cookie decode failed: {e}", "ERR")
         sys.exit(1)
 
 # ==========================================
@@ -230,7 +219,7 @@ def download_video():
 
 def process_video(input_path: Path):
     output_path = PROCESSED_DIR / f"processed_{input_path.name}"
-    log("Applying DNA fingerprint change...", "STEP")
+    log("Applying 11-Layer DNA fingerprint change...", "STEP")
 
     d = {
         "pts":        round(random.uniform(0.98, 1.02), 4),
@@ -262,7 +251,6 @@ def process_video(input_path: Path):
         f"shadowcolor=black@0.5:shadowx=2:shadowy=2"
     )
 
-    # 8-Layer DNA Signature Change Filter Chain (optimized for speed by removing noise/vignette/unsharp)
     v_filters = [
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
         f"setpts={d['pts']}*PTS",
@@ -273,6 +261,9 @@ def process_video(input_path: Path):
         ),
         f"hue=h={d['hue']}",
         f"rotate={d['rotate']}:fillcolor=black:ow=iw:oh=ih",
+        "vignette=PI/4+0.1*sin(t)",
+        "noise=c0s=3:c0f=t+u",
+        "unsharp=3:3:1.2:3:3:0.0",
         f"fps={d['fps']}",
         watermark,
         "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -326,31 +317,25 @@ def generate_ai_metadata(original_title: str):
         f'Return valid JSON ONLY: {{"title":"...","description":"...","tags":[...]}}'
     )
 
-    for attempt in range(1, 4):
-        try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [
-                        {"role": "system", "content": "You are a helpful assistant. You must output valid JSON format only."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=25,
-            )
-            resp.raise_for_status()
-            return json.loads(resp.json()["choices"][0]["message"]["content"])
-        except Exception as e:
-            log(f"Groq attempt {attempt}/3 failed: {e}", "WARN")
-            if attempt < 3:
-                time.sleep(3)
-    return None
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+            },
+            timeout=25,
+        )
+        resp.raise_for_status()
+        return json.loads(resp.json()["choices"][0]["message"]["content"])
+    except Exception as e:
+        log(f"Groq failed: {e}", "WARN")
+        return None
 
 def get_final_metadata(raw_caption: str, video_id: str) -> dict:
     ai = generate_ai_metadata(raw_caption) if GROQ_API_KEY else None
@@ -370,8 +355,8 @@ def get_final_metadata(raw_caption: str, video_id: str) -> dict:
 # PLAYWRIGHT HELPERS
 # ==========================================
 
-async def human_type(page, selector: str, text: str, timeout: int = 5000):
-    await page.click(selector, timeout=timeout)
+async def human_type(page, selector: str, text: str):
+    await page.click(selector)
     await asyncio.sleep(random.uniform(0.3, 0.7))
     await page.keyboard.press("Control+a")
     await asyncio.sleep(random.uniform(0.1, 0.3))
@@ -432,8 +417,8 @@ async def dismiss_overlay(page) -> None:
 
 async def wait_for_done_button(page, max_wait: int = 600) -> bool:
     """
-    Poll #done-button and progress labels.
-    Returns True when upload is complete (or processing has started), False on timeout.
+    Poll #done-button via JS eval (immune to overlay occlusion).
+    Returns True when button is enabled and ready, False on timeout.
     """
     waited = 0
     while waited < max_wait:
@@ -451,23 +436,16 @@ async def wait_for_done_button(page, max_wait: int = 600) -> bool:
                 }
             """)
             if state == "ready":
-                log("Done/Publish button is enabled and ready.")
                 return True
         except:
             pass
 
-        # Check progress text
+        # Show progress text if available
         try:
             prog = await page.query_selector(".progress-label")
             if prog:
-                txt = (await prog.inner_text()).strip()
-                print(f"  ⏳ {txt}", end="\r", flush=True)
-                
-                # If text contains "Upload complete", "Processing", or "Checks", upload is finished!
-                txt_lower = txt.lower()
-                if any(phrase in txt_lower for phrase in ["upload complete", "processing", "checks"]):
-                    log(f"Upload complete detected via progress label: '{txt}'")
-                    return True
+                txt = await prog.inner_text()
+                print(f"  ⏳ {txt.strip()}", end="\r", flush=True)
         except:
             pass
 
@@ -555,17 +533,15 @@ async def playwright_upload(
 
         # ── 2. Open upload dialog ────────────────────────────────────────────
         upload_selectors = [
-            "ytcp-button#create-icon",
             "button[aria-label='Create']",
-            "button[aria-label*='Create' i]",
-            "button[aria-label*='create' i]",
+            "ytcp-button#create-icon",
             "#upload-btn",
         ]
         clicked = False
         for sel in upload_selectors:
             if await human_click(page, sel):
                 clicked = True
-                log(f"Upload button clicked: {sel}")
+                log("Upload button clicked")
                 break
 
         if not clicked:
@@ -573,72 +549,30 @@ async def playwright_upload(
             await page.goto(
                 "https://www.youtube.com/upload", wait_until="domcontentloaded"
             )
-            await asyncio.sleep(random.uniform(3.0, 5.0))
-        else:
-            await asyncio.sleep(random.uniform(1.5, 2.5))
-            # Handle "Upload videos" dropdown item
-            try:
-                # 1. Try English text first
-                opt = await page.wait_for_selector(
-                    "tp-yt-paper-item:has-text('Upload videos')", timeout=3000
-                )
-                await asyncio.sleep(random.uniform(0.5, 1.0))
-                await opt.click()
-                log("Clicked 'Upload videos' via text")
-                await asyncio.sleep(random.uniform(1.0, 2.0))
-            except:
-                try:
-                    # 2. Try the first item inside ytcp-text-menu (which is typically Upload Videos)
-                    opt = await page.wait_for_selector(
-                        "ytcp-text-menu tp-yt-paper-item", timeout=3000
-                    )
-                    await asyncio.sleep(random.uniform(0.5, 1.0))
-                    await opt.click()
-                    log("Clicked first tp-yt-paper-item inside menu (fallback)")
-                    await asyncio.sleep(random.uniform(1.0, 2.0))
-                except Exception as menu_err:
-                    log(f"Failed to click menu option, will try navigating directly: {menu_err}", "WARN")
-                    await page.goto(
-                        "https://www.youtube.com/upload", wait_until="domcontentloaded"
-                    )
-                    await asyncio.sleep(random.uniform(3.0, 5.0))
+
+        await asyncio.sleep(random.uniform(1.5, 2.5))
+
+        # Handle "Upload videos" dropdown item
+        try:
+            opt = await page.wait_for_selector(
+                "tp-yt-paper-item:has-text('Upload videos')", timeout=4000
+            )
+            await asyncio.sleep(random.uniform(0.5, 1.0))
+            await opt.click()
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+        except:
+            pass
 
         # ── 3. Attach file ───────────────────────────────────────────────────
         log("Attaching video file...", "STEP")
-        
-        file_input_attached = False
         try:
-            # Wait for file input to be attached to DOM
             await page.wait_for_selector(
-                "input[type='file']", state="attached", timeout=5000
+                "input[type='file']", state="attached", timeout=15000
             )
-            file_input_attached = True
-        except:
-            log("Upload input element not found, navigating directly to youtube.com/upload...", "WARN")
-            try:
-                await page.goto(
-                    "https://www.youtube.com/upload", wait_until="domcontentloaded"
-                )
-                await asyncio.sleep(random.uniform(3.0, 5.0))
-                await page.wait_for_selector(
-                    "input[type='file']", state="attached", timeout=15000
-                )
-                file_input_attached = True
-                log("Upload input element found after direct navigation")
-            except Exception as direct_err:
-                log(f"Direct navigation failed to load upload input: {direct_err}", "ERR")
-
-        if not file_input_attached:
-            log("Could not find upload input element. Aborting.", "ERR")
-            await safe_screenshot(page, "error_file_attach.png")
-            await browser.close()
-            return None
-
-        try:
             await page.locator("input[type='file']").first.set_input_files(video_path)
-            log("File attached successfully!")
+            log("File attached!")
         except Exception as e:
-            log(f"File attachment failed: {e}", "ERR")
+            log(f"File input failed: {e}", "ERR")
             await safe_screenshot(page, "error_file_attach.png")
             await browser.close()
             return None
@@ -646,37 +580,20 @@ async def playwright_upload(
         await asyncio.sleep(random.uniform(3.0, 5.0))
 
         # ── 4. Title ─────────────────────────────────────────────────────────
-        # Wait for Details tab to load (specifically title container)
-        log("Waiting for Details editor to load...", "STEP")
-        try:
-            await page.wait_for_selector(
-                "#title-textarea #textbox, #title-container #textbox, ytcp-social-suggestions-textbox #textbox", 
-                state="visible", 
-                timeout=30000
-            )
-            log("Details editor loaded")
-        except Exception as load_err:
-            log(f"Details editor loading timed out: {load_err}", "WARN")
-            await safe_screenshot(page, "error_details_load.png")
-
         title_selectors = [
+            "#textbox[aria-label='Add a title that describes your video']",
             "#title-textarea #textbox",
-            "#title-container #textbox",
             "ytcp-social-suggestions-textbox #textbox",
-            "#textbox[aria-label*='Title' i]",
-            "#textbox[aria-label*='title' i]",
         ]
         title_filled = False
         for sel in title_selectors:
             try:
-                # Use a short timeout of 5000ms for finding and typing
-                await page.wait_for_selector(sel, state="visible", timeout=5000)
-                await human_type(page, sel, title[:100], timeout=5000)
-                log(f"Title filled using: {sel}")
+                await page.wait_for_selector(sel, timeout=8000)
+                await human_type(page, sel, title[:100])
+                log("Title filled")
                 title_filled = True
                 break
-            except Exception as title_err:
-                log(f"Failed to fill title with selector '{sel}': {title_err}", "WARN")
+            except:
                 continue
         if not title_filled:
             log("Title field not found", "WARN")
@@ -685,46 +602,30 @@ async def playwright_upload(
 
         # ── 5. Description ───────────────────────────────────────────────────
         desc_selectors = [
+            "#textbox[aria-label='Tell viewers about your video']",
             "#description-textarea #textbox",
-            "#description-container #textbox",
-            "#textbox[aria-label*='Description' i]",
-            "#textbox[aria-label*='description' i]",
         ]
-        desc_filled = False
         for sel in desc_selectors:
             try:
-                await page.wait_for_selector(sel, state="visible", timeout=5000)
-                await human_type(page, sel, description[:4500], timeout=5000)
-                log(f"Description filled using: {sel}")
-                desc_filled = True
+                await page.wait_for_selector(sel, timeout=5000)
+                await human_type(page, sel, description[:4500])
+                log("Description filled")
                 break
-            except Exception as desc_err:
-                log(f"Failed to fill description with selector '{sel}': {desc_err}", "WARN")
+            except:
                 continue
 
         await asyncio.sleep(random.uniform(0.8, 1.5))
 
         # ── 6. Not for kids ──────────────────────────────────────────────────
         try:
-            # Try language-independent selector first (name attribute)
             nfk = await page.wait_for_selector(
-                'tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], [name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]',
-                timeout=5000
+                "#radioLabel:has-text('No, it\\'s not made for kids')", timeout=5000
             )
             await asyncio.sleep(random.uniform(0.5, 1.0))
             await js_click(nfk)
-            log("Audience set (language-independent)")
+            log("Audience set")
         except:
-            try:
-                # Fallback to English text
-                nfk = await page.wait_for_selector(
-                    "#radioLabel:has-text('No, it\\'s not made for kids')", timeout=3000
-                )
-                await asyncio.sleep(random.uniform(0.5, 1.0))
-                await js_click(nfk)
-                log("Audience set (fallback text)")
-            except Exception as aud_err:
-                log(f"Failed to set audience: {aud_err}", "WARN")
+            pass
 
         await asyncio.sleep(random.uniform(0.8, 1.5))
 
@@ -815,8 +716,7 @@ async def playwright_upload(
             link = await page.wait_for_selector("a.ytcp-video-info", timeout=10000)
             href = await link.get_attribute("href")
             if href:
-                # Matches v=xyz or youtu.be/xyz
-                match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]+)", href)
+                match = re.search(r"v=([a-zA-Z0-9_-]+)", href)
                 if match:
                     yt_id = match.group(1)
                     log(f"Video live: https://youtube.com/watch?v={yt_id}")
@@ -849,18 +749,10 @@ def main():
     validate_env()
     setup_dirs()
 
-    # Step 1: Download with Retries
-    result = None
-    for attempt in range(1, 4):
-        log(f"Attempting video download from TikTok (Attempt {attempt}/3)...", "STEP")
-        result = download_video()
-        if result:
-            break
-        log("Download failed, retrying in 10 seconds...", "WARN")
-        time.sleep(10)
-
+    # Step 1: Download
+    result = download_video()
     if not result:
-        log("No new video to upload (or all download attempts failed). Exiting.")
+        log("No new video to upload. Exiting.")
         sys.exit(0)
 
     v_file, raw_caption = result
@@ -873,42 +765,27 @@ def main():
         log("Duplicate video detected — skipping.", "WARN")
         sys.exit(0)
 
-    # Step 3: Process (DNA change) with Retries
-    processed = None
-    for attempt in range(1, 4):
-        log(f"Processing video using FFmpeg (Attempt {attempt}/3)...", "STEP")
-        processed = process_video(v_file)
-        if processed:
-            break
-        log("FFmpeg video processing failed, retrying in 5 seconds...", "WARN")
-        time.sleep(5)
-
+    # Step 3: Process (DNA change)
+    processed = process_video(v_file)
     if not processed:
-        log("Video processing failed after 3 attempts.", "ERR")
+        log("Video processing failed.", "ERR")
         sys.exit(1)
 
     # Step 4: Metadata
     meta = get_final_metadata(raw_caption, vid_id)
     log(f"Title: {meta['title']}")
 
-    # Step 5: Upload via Playwright with Retries
-    yt_id = None
-    for attempt in range(1, 4):
-        log(f"Attempting YouTube upload via Playwright (Attempt {attempt}/3)...", "STEP")
-        yt_id = upload_video_sync(
-            video_path=str(processed),
-            title=meta["title"],
-            description=meta["description"],
-            tags=meta["tags"],
-            privacy=PRIVACY,
-        )
-        if yt_id:
-            break
-        log("Playwright upload attempt failed. Retrying in 15 seconds...", "WARN")
-        time.sleep(15)
+    # Step 5: Upload via Playwright
+    yt_id = upload_video_sync(
+        video_path=str(processed),
+        title=meta["title"],
+        description=meta["description"],
+        tags=meta["tags"],
+        privacy=PRIVACY,
+    )
 
     if not yt_id:
-        log("Upload failed after 3 attempts.", "ERR")
+        log("Upload failed.", "ERR")
         sys.exit(1)
 
     # Step 6: Save history

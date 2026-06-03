@@ -522,15 +522,17 @@ async def playwright_upload(
 
         # ── 2. Open upload dialog ────────────────────────────────────────────
         upload_selectors = [
-            "button[aria-label='Create']",
             "ytcp-button#create-icon",
+            "button[aria-label='Create']",
+            "button[aria-label*='Create' i]",
+            "button[aria-label*='create' i]",
             "#upload-btn",
         ]
         clicked = False
         for sel in upload_selectors:
             if await human_click(page, sel):
                 clicked = True
-                log("Upload button clicked")
+                log(f"Upload button clicked: {sel}")
                 break
 
         if not clicked:
@@ -538,30 +540,72 @@ async def playwright_upload(
             await page.goto(
                 "https://www.youtube.com/upload", wait_until="domcontentloaded"
             )
-
-        await asyncio.sleep(random.uniform(1.5, 2.5))
-
-        # Handle "Upload videos" dropdown item
-        try:
-            opt = await page.wait_for_selector(
-                "tp-yt-paper-item:has-text('Upload videos')", timeout=4000
-            )
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-            await opt.click()
-            await asyncio.sleep(random.uniform(1.0, 2.0))
-        except:
-            pass
+            await asyncio.sleep(random.uniform(3.0, 5.0))
+        else:
+            await asyncio.sleep(random.uniform(1.5, 2.5))
+            # Handle "Upload videos" dropdown item
+            try:
+                # 1. Try English text first
+                opt = await page.wait_for_selector(
+                    "tp-yt-paper-item:has-text('Upload videos')", timeout=3000
+                )
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+                await opt.click()
+                log("Clicked 'Upload videos' via text")
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+            except:
+                try:
+                    # 2. Try the first item inside ytcp-text-menu (which is typically Upload Videos)
+                    opt = await page.wait_for_selector(
+                        "ytcp-text-menu tp-yt-paper-item", timeout=3000
+                    )
+                    await asyncio.sleep(random.uniform(0.5, 1.0))
+                    await opt.click()
+                    log("Clicked first tp-yt-paper-item inside menu (fallback)")
+                    await asyncio.sleep(random.uniform(1.0, 2.0))
+                except Exception as menu_err:
+                    log(f"Failed to click menu option, will try navigating directly: {menu_err}", "WARN")
+                    await page.goto(
+                        "https://www.youtube.com/upload", wait_until="domcontentloaded"
+                    )
+                    await asyncio.sleep(random.uniform(3.0, 5.0))
 
         # ── 3. Attach file ───────────────────────────────────────────────────
         log("Attaching video file...", "STEP")
+        
+        file_input_attached = False
         try:
+            # Wait for file input to be attached to DOM
             await page.wait_for_selector(
-                "input[type='file']", state="attached", timeout=15000
+                "input[type='file']", state="attached", timeout=5000
             )
+            file_input_attached = True
+        except:
+            log("Upload input element not found, navigating directly to youtube.com/upload...", "WARN")
+            try:
+                await page.goto(
+                    "https://www.youtube.com/upload", wait_until="domcontentloaded"
+                )
+                await asyncio.sleep(random.uniform(3.0, 5.0))
+                await page.wait_for_selector(
+                    "input[type='file']", state="attached", timeout=15000
+                )
+                file_input_attached = True
+                log("Upload input element found after direct navigation")
+            except Exception as direct_err:
+                log(f"Direct navigation failed to load upload input: {direct_err}", "ERR")
+
+        if not file_input_attached:
+            log("Could not find upload input element. Aborting.", "ERR")
+            await safe_screenshot(page, "error_file_attach.png")
+            await browser.close()
+            return None
+
+        try:
             await page.locator("input[type='file']").first.set_input_files(video_path)
-            log("File attached!")
+            log("File attached successfully!")
         except Exception as e:
-            log(f"File input failed: {e}", "ERR")
+            log(f"File attachment failed: {e}", "ERR")
             await safe_screenshot(page, "error_file_attach.png")
             await browser.close()
             return None
@@ -607,14 +651,25 @@ async def playwright_upload(
 
         # ── 6. Not for kids ──────────────────────────────────────────────────
         try:
+            # Try language-independent selector first (name attribute)
             nfk = await page.wait_for_selector(
-                "#radioLabel:has-text('No, it\\'s not made for kids')", timeout=5000
+                'tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], [name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]',
+                timeout=5000
             )
             await asyncio.sleep(random.uniform(0.5, 1.0))
             await js_click(nfk)
-            log("Audience set")
+            log("Audience set (language-independent)")
         except:
-            pass
+            try:
+                # Fallback to English text
+                nfk = await page.wait_for_selector(
+                    "#radioLabel:has-text('No, it\\'s not made for kids')", timeout=3000
+                )
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+                await js_click(nfk)
+                log("Audience set (fallback text)")
+            except Exception as aud_err:
+                log(f"Failed to set audience: {aud_err}", "WARN")
 
         await asyncio.sleep(random.uniform(0.8, 1.5))
 
@@ -705,7 +760,8 @@ async def playwright_upload(
             link = await page.wait_for_selector("a.ytcp-video-info", timeout=10000)
             href = await link.get_attribute("href")
             if href:
-                match = re.search(r"v=([a-zA-Z0-9_-]+)", href)
+                # Matches v=xyz or youtu.be/xyz
+                match = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]+)", href)
                 if match:
                     yt_id = match.group(1)
                     log(f"Video live: https://youtube.com/watch?v={yt_id}")

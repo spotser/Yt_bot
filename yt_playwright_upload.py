@@ -96,28 +96,14 @@ def load_cookies():
         cookies = json.loads(decoded)
 
         for cookie in cookies:
-            # Fix sameSite: Chromium DROPS cookies with SameSite=None + Secure=false
             same_site = cookie.get("sameSite", "")
-            if same_site == "no_restriction":
+            if same_site not in ["Strict", "Lax", "None"]:
                 cookie["sameSite"] = "None"
-            elif same_site not in ["Strict", "Lax", "None"]:
-                cookie["sameSite"] = "Lax"  # Browser default for "unspecified"
-
-            # Safety net: SameSite=None requires Secure=true
-            if cookie.get("sameSite") == "None" and not cookie.get("secure", False):
-                cookie["sameSite"] = "Lax"
-
-            # Playwright expects "expires", not "expirationDate"
-            if "expirationDate" in cookie:
-                cookie["expires"] = cookie.pop("expirationDate")
-
-            # Remove fields Playwright doesn't understand
             cookie.pop("hostOnly", None)
             cookie.pop("storeId", None)
             cookie.pop("firstPartyDomain", None)
             cookie.pop("partitionKey", None)
             cookie.pop("session", None)
-            cookie.pop("id", None)
 
         COOKIES_PATH.write_text(json.dumps(cookies), encoding="utf-8")
         log(f"Loaded {len(cookies)} YouTube cookies")

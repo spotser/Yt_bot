@@ -78,7 +78,21 @@ def validate_env():
 def load_cookies():
     COOKIES_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
-        decoded = base64.b64decode(COOKIES_B64).decode("utf-8")
+        raw_b64 = COOKIES_B64.strip()
+        # Strip BOM and whitespace from the base64 string
+        raw_b64 = raw_b64.lstrip("\ufeff").strip()
+        decoded = base64.b64decode(raw_b64).decode("utf-8").strip()
+        # Strip UTF-8 BOM if present after decoding
+        decoded = decoded.lstrip("\ufeff").strip()
+
+        # Handle double base64 encoding (if decoded is still base64)
+        if decoded and decoded[0] not in ('[', '{'):
+            try:
+                decoded = base64.b64decode(decoded).decode("utf-8").strip()
+                decoded = decoded.lstrip("\ufeff").strip()
+            except Exception:
+                pass
+
         cookies = json.loads(decoded)
 
         for cookie in cookies:
@@ -109,7 +123,14 @@ def load_cookies():
         log(f"Loaded {len(cookies)} YouTube cookies")
         return cookies
     except Exception as e:
-        log(f"Cookie decode failed: {e}", "ERR")
+        # Debug: show what was actually received
+        preview = ""
+        try:
+            raw = base64.b64decode(COOKIES_B64.strip()).decode("utf-8", errors="replace")
+            preview = repr(raw[:80])
+        except Exception:
+            preview = repr(COOKIES_B64[:80]) if COOKIES_B64 else "(empty)"
+        log(f"Cookie decode failed: {e} | Preview: {preview}", "ERR")
         sys.exit(1)
 
 # ==========================================

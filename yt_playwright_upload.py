@@ -315,7 +315,10 @@ def generate_ai_metadata(original_title: str):
                 },
                 json={
                     "model": "llama-3.1-8b-instant",
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [
+                        {"role": "system", "content": "You are a helpful assistant. You must output valid JSON format only."},
+                        {"role": "user", "content": prompt}
+                    ],
                     "response_format": {"type": "json_object"},
                 },
                 timeout=25,

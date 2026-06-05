@@ -447,7 +447,7 @@ def generate_ai_metadata(original_title: str) -> str:
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "openai/gpt-oss-120b",
+                "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"}
             },
